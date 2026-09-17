@@ -1,0 +1,3 @@
+# /etc/cron.d/autodidact-freshrss — pull read + starred FreshRSS items hourly.
+# /srv/autodidact/env holds AUTODIDACT_TOKEN, FRESHRSS_URL, FRESHRSS_USER, FRESHRSS_API_PASSWORD.
+17 * * * * pi cd /srv/autodidact/server && set -a && . /srv/autodidact/env && set +a && /srv/autodidact/venv/bin/python freshrss_sync.py --state /srv/autodidact/data/freshrss_state.json --days 7 >> /srv/autodidact/data/freshrss.log 2>&1

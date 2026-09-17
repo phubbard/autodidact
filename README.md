@@ -17,9 +17,10 @@ autodidact/
 ├── server/
 │   ├── app.py          Flask: /ingest, /dwell, /search, /page, /stats, UI at /
 │   ├── db.py           schema (pages, visits, embeddings, FTS5), URL normalisation
+│   ├── freshrss_sync.py  second source: read/starred FreshRSS items via its Google Reader API
 │   ├── embed.py        milestone-2 enrichment job (summaries, tags, embeddings via LM Studio)
 │   └── tests/          pytest
-└── deploy/             systemd unit, Caddy snippet, cron line for embed.py
+└── deploy/             systemd unit, Caddy snippet, cron lines for freshrss_sync.py and embed.py
 ```
 
 ## Run the server
@@ -98,6 +99,37 @@ wildcard, and if AND-ing every word finds nothing the search falls back to any
 word (the UI says so). `after`/`before` filter on the page's seen window;
 `domain` matches the site and its subdomains.
 
+## Second source: FreshRSS
+
+Reading in an RSS client on the phone never touches a browser extension, but
+the client syncs read and starred state back to FreshRSS, and FreshRSS exposes
+that through its Google Reader compatible API. `server/freshrss_sync.py` pulls
+items that are read and/or starred, converts the feed HTML to text, fetches
+the full article when the feed only carried an excerpt (uses `trafilatura` if
+installed, otherwise the page's `<article>`/`<main>` block), and POSTs to
+`/ingest` with `source: "rss"`. The server dedups against browser captures of
+the same URL, so an article read on the phone and later opened on the laptop
+is one page with two visits.
+
+Setup: in FreshRSS, Administration → Authentication → allow API access, then
+set an API password on your profile. Then:
+
+```sh
+export FRESHRSS_URL=https://rss.example.net FRESHRSS_USER=paul FRESHRSS_API_PASSWORD=…
+export AUTODIDACT_URL=http://127.0.0.1:8765 AUTODIDACT_TOKEN=…
+python freshrss_sync.py --dry-run --days 3        # see what would be sent
+python freshrss_sync.py --state ./freshrss_state.json
+```
+
+`deploy/freshrss.cron` runs it hourly. Search results show `rss · <feed>` on
+these hits, the UI has a browser/rss filter, and starred items are findable
+by searching `starred` or the feed's name.
+
+Caveat: FreshRSS cannot distinguish an article you opened from one swept
+away by "mark all as read". `--mode starred` limits ingest to what you
+deliberately kept; the default `--mode both` trusts read state. Try both and
+see which corpus searches better.
+
 ## Milestone 2 (optional now)
 
 `server/embed.py` fills `summary` and `tags` (which flow into the FTS index
@@ -109,7 +141,8 @@ minutes and simply does nothing when Axiom is asleep.
 ## Tests
 
 `server/tests` covers URL normalisation, FTS query escaping, dedup, dwell,
-filters and deletion (19 tests). `extension/test/e2e.mjs` loads the built
+filters, deletion, schema migration, and a FreshRSS sync run against a fake
+Google Reader endpoint and a live server (23 tests). `extension/test/e2e.mjs` loads the built
 extension into headless Chromium, configures it through its own options page,
 dwells on a local article, triggers an SPA navigation, and checks both pages
 are searchable with the nav and footer text absent. Needs `npm i playwright`

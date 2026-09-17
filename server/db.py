@@ -26,8 +26,12 @@ CREATE TABLE IF NOT EXISTS pages (
   total_dwell_s INTEGER NOT NULL DEFAULT 0,
   summary       TEXT,
   tags          TEXT,
+  source        TEXT NOT NULL DEFAULT 'web',   -- 'web' (extension) or 'rss' (FreshRSS)
+  feed          TEXT,                          -- feed title for rss items
+  published_at  INTEGER,                       -- item publish time for rss items
   UNIQUE(url_hash, content_hash)
 );
+CREATE INDEX IF NOT EXISTS pages_source ON pages(source);
 CREATE INDEX IF NOT EXISTS pages_url_hash ON pages(url_hash);
 CREATE INDEX IF NOT EXISTS pages_last_seen ON pages(last_seen);
 CREATE INDEX IF NOT EXISTS pages_domain ON pages(domain);
@@ -79,15 +83,31 @@ TRACKING_PARAMS = re.compile(
 )
 
 
+# Columns added after the first release, applied to existing databases on open.
+MIGRATIONS = [
+    ("pages", "source", "TEXT NOT NULL DEFAULT 'web'"),
+    ("pages", "feed", "TEXT"),
+    ("pages", "published_at", "INTEGER"),
+]
+
+
 def connect(path: str) -> sqlite3.Connection:
     """Open (and initialise) the database at *path*."""
-    first = not os.path.exists(path) or path == ":memory:"
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='pages'").fetchone()
+    if exists:
+        _migrate(conn)
     conn.executescript(SCHEMA)
-    if first:
-        conn.commit()
+    conn.commit()
     return conn
+
+
+def _migrate(conn):
+    for table, column, decl in MIGRATIONS:
+        cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
 
 def normalize_url(url: str) -> str:

@@ -1,3 +1,4 @@
 flask>=3.0
 gunicorn>=21
 pytest>=8
+trafilatura>=1.9   # optional: full-article extraction for excerpt-only feeds in freshrss_sync.py

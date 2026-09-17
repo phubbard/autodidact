@@ -54,6 +54,11 @@
       <label>from <input type="date" id="after"></label>
       <label>to <input type="date" id="before"></label>
       <label>site <input type="text" id="domain" placeholder="example.com" size="14"></label>
+      <div class="chips" id="sources">
+        <button type="button" class="chip on" data-source="">all</button>
+        <button type="button" class="chip" data-source="web">browser</button>
+        <button type="button" class="chip" data-source="rss">rss</button>
+      </div>
     </div>
   </form>
   <div id="meta"></div>
@@ -72,6 +77,8 @@ function params() {
   if ($('#after').value) p.set('after', $('#after').value);
   if ($('#before').value) p.set('before', $('#before').value);
   if ($('#domain').value.trim()) p.set('domain', $('#domain').value.trim());
+  const src = document.querySelector('#sources .chip.on')?.dataset.source;
+  if (src) p.set('source', src);
   p.set('limit', PAGE);
   p.set('offset', offset);
   return p;
@@ -96,8 +103,9 @@ function render(hits, append) {
       <div class="snip">${snip(h.snippet)}</div>
       <div class="foot">
         <span>${esc(h.domain)}</span>
+        ${h.source === 'rss' ? `<span>rss · ${esc(h.feed || '')}</span>` : ''}
         <span>${when}</span>
-        <span>${h.visit_count} visit${h.visit_count === 1 ? '' : 's'}, ${mins(h.total_dwell_s)}</span>
+        <span>${h.source === 'rss' ? `${h.visit_count} sync${h.visit_count === 1 ? '' : 's'}` : `${h.visit_count} visit${h.visit_count === 1 ? '' : 's'}, ${mins(h.total_dwell_s)}`}</span>
         <a href="/page/${h.id}?format=html" target="_blank">stored text</a>
       </div>`;
     box.appendChild(el);
@@ -128,9 +136,15 @@ $('#f').addEventListener('submit', (e) => { e.preventDefault(); run(); });
 $('#q').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(run, 250); });
 for (const id of ['after', 'before', 'domain']) $('#' + id).addEventListener('change', () => run());
 $('#more').addEventListener('click', () => run(true));
+$('#sources').addEventListener('click', (e) => {
+  const b = e.target.closest('.chip'); if (!b) return;
+  document.querySelectorAll('#sources .chip').forEach((c) => c.classList.remove('on'));
+  b.classList.add('on');
+  run();
+});
 $('#chips').addEventListener('click', (e) => {
   const b = e.target.closest('.chip'); if (!b) return;
-  document.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
+  document.querySelectorAll('#chips .chip').forEach((c) => c.classList.remove('on'));
   b.classList.add('on');
   if (b.dataset.days) {
     const d = new Date(); d.setDate(d.getDate() - Number(b.dataset.days));
@@ -143,6 +157,9 @@ $('#chips').addEventListener('click', (e) => {
 // Restore state from the URL, then run.
 const init = new URLSearchParams(location.search);
 for (const id of ['q', 'after', 'before', 'domain']) if (init.get(id)) $('#' + id).value = init.get(id);
+if (init.get('source')) {
+  document.querySelectorAll('#sources .chip').forEach((c) => c.classList.toggle('on', c.dataset.source === init.get('source')));
+}
 fetch('/stats').then((r) => r.json()).then((s) => {
   $('#stats').textContent = `${s.pages.toLocaleString()} pages · ${s.domains.toLocaleString()} sites · ${(s.db_bytes / 1048576).toFixed(0)} MB`;
 });

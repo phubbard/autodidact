@@ -21,6 +21,7 @@ MIN_TEXT_CHARS = 100
 MAX_TEXT_CHARS = 250_000
 DEFAULT_LIMIT = 25
 MAX_LIMIT = 200
+SOURCES = {"web", "rss"}
 
 
 def create_app(db_path=None, token=None):
@@ -94,6 +95,11 @@ def create_app(db_path=None, token=None):
         dwell = max(0, int(body.get("dwell_s") or 0))
         visit_id = (body.get("visit_id") or "").strip() or None
         browser = _browser_name(body.get("browser") or "")
+        source = (body.get("source") or "web").strip().lower()
+        if source not in SOURCES:
+            abort(400, f"source must be one of {sorted(SOURCES)}")
+        feed = (body.get("feed") or "").strip()[:200] or None
+        published_at = int(body["published_at"]) if body.get("published_at") else None
 
         conn = get_db()
         row = conn.execute(
@@ -103,11 +109,11 @@ def create_app(db_path=None, token=None):
         if created:
             cur = conn.execute(
                 """INSERT INTO pages (url, url_hash, content_hash, title, description, text, lang, domain,
-                                      first_seen, last_seen, visit_count, total_dwell_s)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)""",
+                                      first_seen, last_seen, visit_count, total_dwell_s, source, feed, published_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)""",
                 (norm, url_hash, content_hash, (body.get("title") or "")[:500],
                  (body.get("description") or "")[:2000], text, (body.get("lang") or "")[:16],
-                 db.domain_of(norm), now, now),
+                 db.domain_of(norm), now, now, source, feed, published_at),
             )
             page_id = cur.lastrowid
         else:
@@ -149,6 +155,7 @@ def create_app(db_path=None, token=None):
         after = _parse_date(request.args.get("after"))
         before = _parse_date(request.args.get("before"), end_of_day=True)
         domain = (request.args.get("domain") or "").strip().lower()
+        source = (request.args.get("source") or "").strip().lower()
         limit = min(MAX_LIMIT, max(1, int(request.args.get("limit") or DEFAULT_LIMIT)))
         offset = max(0, int(request.args.get("offset") or 0))
 
@@ -160,19 +167,22 @@ def create_app(db_path=None, token=None):
             where.append("p.first_seen <= ?"); params.append(before)
         if domain:
             where.append("(p.domain = ? OR p.domain LIKE ?)"); params.extend([domain, f"%.{domain}"])
+        if source in SOURCES:
+            where.append("p.source = ?"); params.append(source)
         filt = (" AND " + " AND ".join(where)) if where else ""
+
+        cols = """p.id, p.url, p.title, p.domain, p.first_seen, p.last_seen, p.visit_count,
+                  p.total_dwell_s, p.source, p.feed, p.published_at"""
 
         if not q:
             rows = conn.execute(
-                f"""SELECT p.id, p.url, p.title, p.domain, p.first_seen, p.last_seen, p.visit_count,
-                           p.total_dwell_s, substr(p.text, 1, 240) AS snippet, 0 AS score
+                f"""SELECT {cols}, substr(p.text, 1, 240) AS snippet, 0 AS score
                     FROM pages p WHERE 1=1 {filt} ORDER BY p.last_seen DESC LIMIT ? OFFSET ?""",
                 (*params, limit, offset),
             ).fetchall()
             return jsonify({"q": q, "mode": "recent", "results": [_hit(r) for r in rows]})
 
-        sql = f"""SELECT p.id, p.url, p.title, p.domain, p.first_seen, p.last_seen, p.visit_count,
-                         p.total_dwell_s,
+        sql = f"""SELECT {cols},
                          snippet(pages_fts, 2, '<mark>', '</mark>', ' … ', 28) AS snippet,
                          bm25(pages_fts, 3.0, 2.0, 1.0, 3.0, 3.0, 1.0) AS score
                   FROM pages_fts JOIN pages p ON p.id = pages_fts.rowid
@@ -229,10 +239,12 @@ def create_app(db_path=None, token=None):
         visits = conn.execute("SELECT COUNT(*) FROM visits").fetchone()[0]
         domains = conn.execute("SELECT COUNT(DISTINCT domain) FROM pages").fetchone()[0]
         enriched = conn.execute("SELECT COUNT(*) FROM pages WHERE summary IS NOT NULL").fetchone()[0]
+        by_source = {r["source"]: r["n"] for r in
+                     conn.execute("SELECT source, COUNT(*) AS n FROM pages GROUP BY source")}
         newest = conn.execute("SELECT MAX(last_seen) FROM pages").fetchone()[0]
         size = os.path.getsize(app.config["DB_PATH"]) if os.path.exists(app.config["DB_PATH"]) else 0
         return jsonify({"pages": pages, "visits": visits, "domains": domains, "enriched": enriched,
-                        "newest": newest, "db_bytes": size})
+                        "by_source": by_source, "newest": newest, "db_bytes": size})
 
     @app.get("/")
     def index():
