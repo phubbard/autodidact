@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root { color-scheme: light dark; font-family: -apple-system, system-ui, sans-serif; font-size: 13px; }
+    body { width: 240px; margin: 0; padding: .75rem; }
+    h1 { font-size: 14px; margin: 0 0 .5rem; }
+    button { display: block; width: 100%; font: inherit; padding: .4rem .6rem; margin-top: .4rem; text-align: left; }
+    .muted { opacity: .7; font-size: 12px; margin-top: .5rem; }
+    #domain { font-family: ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+  <h1>Autodidact</h1>
+  <div class="muted">This page: <span id="domain">…</span></div>
+  <button id="pause">Pause for 1 hour</button>
+  <button id="block">Never record this domain</button>
+  <button id="search">Open search</button>
+  <button id="options">Settings</button>
+  <div class="muted" id="queue"></div>
+  <script src="popup.js"></script>
+</body>
+</html>

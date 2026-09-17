@@ -1,0 +1,14 @@
+[Unit]
+Description=Autodidact ingest and search server
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/srv/autodidact/server
+Environment=AUTODIDACT_DB=/srv/autodidact/data/autodidact.db
+EnvironmentFile=/srv/autodidact/env
+ExecStart=/srv/autodidact/venv/bin/gunicorn -w 2 -b 127.0.0.1:8765 'app:create_app()'
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

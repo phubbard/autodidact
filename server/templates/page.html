@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page.title or page.url }} — Autodidact</title>
+  <style>
+    :root { color-scheme: light dark; font-family: -apple-system, system-ui, sans-serif; }
+    body { max-width: 760px; margin: 2rem auto; padding: 0 1rem; line-height: 1.55; }
+    .meta { color: #6b7280; font-size: .85rem; }
+    .meta a { color: inherit; }
+    pre { white-space: pre-wrap; font: inherit; margin-top: 1.5rem; }
+    .tags span { display: inline-block; padding: .1rem .5rem; border: 1px solid #6b7280; border-radius: 999px; font-size: .8rem; margin-right: .3rem; }
+  </style>
+</head>
+<body>
+  <p class="meta"><a href="/">← search</a></p>
+  <h1>{{ page.title or page.url }}</h1>
+  <p class="meta">
+    <a href="{{ page.url }}" target="_blank" rel="noopener">{{ page.url }}</a><br>
+    {{ page.domain }} · first seen {{ fmt(page.first_seen) }} · last seen {{ fmt(page.last_seen) }} ·
+    {{ page.visit_count }} visit{{ '' if page.visit_count == 1 else 's' }} · {{ page.total_dwell_s }} s dwell
+  </p>
+  {% if page.summary %}<p><em>{{ page.summary }}</em></p>{% endif %}
+  {% if page.tags %}<p class="tags">{% for t in page.tags %}<span>{{ t }}</span>{% endfor %}</p>{% endif %}
+  <pre>{{ page.text }}</pre>
+</body>
+</html>

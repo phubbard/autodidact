@@ -1,0 +1,2 @@
+# /etc/cron.d/autodidact-embed — enrichment every 15 minutes, only does work if Axiom is awake.
+*/15 * * * * pi cd /srv/autodidact/server && AUTODIDACT_DB=/srv/autodidact/data/autodidact.db AUTODIDACT_LLM_URL=http://axiom.phfactor.net:1234/v1 /srv/autodidact/venv/bin/python embed.py --batch 50 >> /srv/autodidact/data/embed.log 2>&1

@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Autodidact settings</title>
+  <style>
+    :root { color-scheme: light dark; font-family: -apple-system, system-ui, sans-serif; }
+    body { max-width: 640px; margin: 2rem auto; padding: 0 1rem; line-height: 1.4; }
+    label { display: block; font-weight: 600; margin-top: 1.2rem; }
+    input[type=text], input[type=password], input[type=number], textarea {
+      width: 100%; box-sizing: border-box; font: inherit; padding: .4rem .5rem; margin-top: .3rem;
+    }
+    textarea { font-family: ui-monospace, monospace; min-height: 14rem; }
+    .hint { font-size: .85rem; opacity: .7; margin-top: .2rem; }
+    .row { display: flex; gap: .6rem; align-items: center; margin-top: 1.5rem; }
+    button { font: inherit; padding: .45rem .9rem; }
+    #status { font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <h1>Autodidact</h1>
+
+  <label for="serverUrl">Server URL</label>
+  <input type="text" id="serverUrl" placeholder="http://autodidact.phfactor.net">
+  <div class="hint">Where the Flask ingest server runs. No trailing slash.</div>
+
+  <label for="token">Bearer token</label>
+  <input type="password" id="token">
+  <div class="hint">Must match <code>AUTODIDACT_TOKEN</code> on the server.</div>
+
+  <label for="dwellSeconds">Dwell threshold (seconds)</label>
+  <input type="number" id="dwellSeconds" min="2" max="120">
+  <div class="hint">A page is recorded only after it has been visible and focused this long.</div>
+
+  <label for="blocklist">Blocklist</label>
+  <textarea id="blocklist" spellcheck="false"></textarea>
+  <div class="hint">One per line. Host globs (<code>*.bank*</code>, <code>192.168.*</code>) or URL prefixes (<code>https://github.com/settings</code>). Lines starting with # are ignored.</div>
+
+  <div class="row">
+    <button id="save">Save</button>
+    <button id="test">Test connection</button>
+    <span id="status"></span>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

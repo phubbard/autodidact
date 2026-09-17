@@ -1,0 +1,10 @@
+# Add to the Pi 5's Caddyfile. LAN-only: the @lan matcher refuses anything
+# that did not come from the home network, so the bearer token is a second
+# layer rather than the only one.
+autodidact.phfactor.net {
+    @lan remote_ip 192.168.0.0/16 10.0.0.0/8 fd00::/8
+    handle @lan {
+        reverse_proxy 127.0.0.1:8765
+    }
+    respond 403
+}
