@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(server/venv/bin/python -m pytest:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python3 -m pytest:*)",
+      "Bash(pytest:*)",
+      "Bash(extension/build.sh)",
+      "Bash(./build.sh)",
+      "Bash(node --check:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ],
+    "deny": [
+      "Bash(git push:*)",
+      "Read(./server/*.db)",
+      "Read(./server/*.db-wal)",
+      "Read(/srv/autodidact/env)"
+    ]
+  }
+}

@@ -3,7 +3,8 @@
 import { chromium } from 'playwright';
 import http from 'node:http';
 
-const EXT = '/home/claude/autodidact/extension/dist/chromium';
+import { fileURLToPath } from 'node:url';
+const EXT = fileURLToPath(new URL('../dist/chromium', import.meta.url));
 const SERVER = 'http://127.0.0.1:8765';
 const TOKEN = 'e2e-token';
 

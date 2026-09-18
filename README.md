@@ -5,7 +5,7 @@ them weeks or months later from a vague recollection. Everything runs on your
 own network: a browser extension captures, a small Flask server stores and
 indexes in SQLite, and a search page finds.
 
-Design notes and the milestone plan live in the "Autodidact Architecture" doc.
+Design notes and the milestone plan are in `docs/ARCHITECTURE.md`; current state and next steps in `docs/STATUS.md`; conventions for working on the code in `CLAUDE.md`.
 This is milestone 1: capture plus keyword search with date and site filters.
 
 ```
