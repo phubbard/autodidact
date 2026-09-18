@@ -7,7 +7,7 @@ Updated 2026-09-18. Keep this current at the end of every working session: what 
 Milestone 1 (capture + keyword search, two sources) is **built and tested, not yet deployed**. Nothing is running on the Pi yet; no real corpus exists.
 
 - Repo: `phubbard/autodidact`, `main` at 920e941 + this handoff commit. Local checkout `~/code/autodidact` on Paul's Mac.
-- CI (`.github/workflows/ci.yml`): pushed, first run's result **not yet confirmed**. Check the Actions tab.
+- CI (`.github/workflows/ci.yml`): **green** on 920e941 and 711b098 (both jobs, ~20 s).
 - Tests: 23 pytest passing locally; `extension/test/e2e.mjs` passed in headless Chromium.
 - The design doc that used to live in a Claude doc is now `docs/ARCHITECTURE.md`. The Claude Project ("autodidact") is being retired in favor of this repo + `CLAUDE.md`.
 
@@ -25,7 +25,7 @@ Milestone 1 (capture + keyword search, two sources) is **built and tested, not y
 
 ## Next steps, in order
 
-1. **Confirm CI is green** on GitHub Actions for 920e941 and this commit. If the extension job fails it's probably `jq`/`zip` availability on the runner.
+1. ~~Confirm CI is green~~ — done 2026-09-18.
 2. **Deploy to the Pi.** Runbook:
    ```sh
    sudo mkdir -p /srv/autodidact/data && sudo chown -R pi /srv/autodidact
@@ -69,3 +69,4 @@ Milestone 1 (capture + keyword search, two sources) is **built and tested, not y
 - 2026-09-16 — Design doc written ("Autodidact Architecture").
 - 2026-09-18 — M1 built: extension, server, FTS5, tests, e2e (b7c5db6). FreshRSS source added (9d52dec). CI added (920e941). Pushed to GitHub.
 - 2026-09-18 — Handoff to a Claude Code project: added `CLAUDE.md`, `docs/ARCHITECTURE.md` (exported from the Claude doc), this file, `.claude/settings.json`; fixed hard-coded container path in `e2e.mjs`.
+- 2026-09-18 — Resumed in Claude Code on the Mac: CI confirmed green, 23 tests pass locally (Python 3.14), removed stray `Claude outputs/` duplicate of `.claude/settings.json`.
