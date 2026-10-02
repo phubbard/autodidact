@@ -21,6 +21,7 @@ autodidact/
 │   ├── embed.py        milestone-2 enrichment job (summaries, tags, embeddings via LM Studio)
 │   └── tests/          pytest
 ├── safari/Autodidact/  Xcode project wrapping extension/src for Safari on macOS and iOS
+├── docs/               ARCHITECTURE.md (design), STATUS.md (current state and session log)
 └── deploy/install.sh   idempotent Pi installer/updater: venv, env, systemd, Caddy, cron
 ```
 
