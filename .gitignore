@@ -6,3 +6,10 @@ __pycache__/
 venv/
 node_modules/
 .pytest_cache/
+
+# Xcode (safari/)
+xcuserdata/
+DerivedData/
+build/
+*.xcuserstate
+.DS_Store

@@ -1,0 +1,609 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 110;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B3AC0DAB306F652F00E87733 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3AC0DAA306F652F00E87733 /* AppDelegate.swift */; };
+		B3AC0DAF306F652F00E87733 /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = B3AC0DAD306F652F00E87733 /* Main.html */; };
+		B3AC0DB1306F652F00E87733 /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = B3AC0DB0306F652F00E87733 /* Icon.png */; };
+		B3AC0DB3306F652F00E87733 /* Style.css in Resources */ = {isa = PBXBuildFile; fileRef = B3AC0DB2306F652F00E87733 /* Style.css */; };
+		B3AC0DB5306F652F00E87733 /* Script.js in Resources */ = {isa = PBXBuildFile; fileRef = B3AC0DB4306F652F00E87733 /* Script.js */; };
+		B3AC0DB7306F652F00E87733 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3AC0DB6306F652F00E87733 /* ViewController.swift */; };
+		B3AC0DBA306F652F00E87733 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = B3AC0DB8306F652F00E87733 /* Main.storyboard */; };
+		B3AC0DBC306F653000E87733 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B3AC0DBB306F653000E87733 /* Assets.xcassets */; };
+		B3AC0DC3306F653000E87733 /* Autodidact Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B3AC0DC2306F653000E87733 /* Autodidact Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B3AC0DC8306F653000E87733 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3AC0DC7306F653000E87733 /* SafariWebExtensionHandler.swift */; };
+		B3AC0DDC306F653000E87733 /* popup.js in Resources */ = {isa = PBXBuildFile; fileRef = B3AC0DD4306F653000E87733 /* popup.js */; };
+		B3AC0DDD306F653000E87733 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = B3AC0DD5306F653000E87733 /* background.js */; };
+		B3AC0DDE306F653000E87733 /* popup.html in Resources */ = {isa = PBXBuildFile; fileRef = B3AC0DD6306F653000E87733 /* popup.html */; };
+		B3AC0DDF306F653000E87733 /* options.js in Resources */ = {isa = PBXBuildFile; fileRef = B3AC0DD7306F653000E87733 /* options.js */; };
+		B3AC0DE0306F653000E87733 /* icons in Resources */ = {isa = PBXBuildFile; fileRef = B3AC0DD8306F653000E87733 /* icons */; };
+		B3AC0DE1306F653000E87733 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = B3AC0DD9306F653000E87733 /* manifest.json */; };
+		B3AC0DE2306F653000E87733 /* options.html in Resources */ = {isa = PBXBuildFile; fileRef = B3AC0DDA306F653000E87733 /* options.html */; };
+		B3AC0DE3306F653000E87733 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = B3AC0DDB306F653000E87733 /* content.js */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B3AC0DC4306F653000E87733 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B3AC0D9F306F652F00E87733 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B3AC0DC1306F653000E87733;
+			remoteInfo = "Autodidact Extension";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B3AC0DCF306F653000E87733 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				B3AC0DC3306F653000E87733 /* Autodidact Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		B3AC0DA7306F652F00E87733 /* Autodidact.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Autodidact.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B3AC0DAA306F652F00E87733 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		B3AC0DAE306F652F00E87733 /* Base */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = Base; path = Base.lproj/Main.html; sourceTree = "<group>"; };
+		B3AC0DB0306F652F00E87733 /* Icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Icon.png; sourceTree = "<group>"; };
+		B3AC0DB2306F652F00E87733 /* Style.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = Style.css; sourceTree = "<group>"; };
+		B3AC0DB4306F652F00E87733 /* Script.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = Script.js; sourceTree = "<group>"; };
+		B3AC0DB6306F652F00E87733 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
+		B3AC0DB9306F652F00E87733 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		B3AC0DBB306F653000E87733 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B3AC0DBD306F653000E87733 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B3AC0DC2306F653000E87733 /* Autodidact Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Autodidact Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B3AC0DC7306F653000E87733 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
+		B3AC0DC9306F653000E87733 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B3AC0DD4306F653000E87733 /* popup.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = popup.js; path = ../../../extension/src/popup.js; sourceTree = "<group>"; };
+		B3AC0DD5306F653000E87733 /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = ../../../extension/src/background.js; sourceTree = "<group>"; };
+		B3AC0DD6306F653000E87733 /* popup.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = popup.html; path = ../../../extension/src/popup.html; sourceTree = "<group>"; };
+		B3AC0DD7306F653000E87733 /* options.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = options.js; path = ../../../extension/src/options.js; sourceTree = "<group>"; };
+		B3AC0DD8306F653000E87733 /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = ../../../extension/src/icons; sourceTree = "<group>"; };
+		B3AC0DD9306F653000E87733 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = ../../../extension/src/manifest.json; sourceTree = "<group>"; };
+		B3AC0DDA306F653000E87733 /* options.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = options.html; path = ../../../extension/src/options.html; sourceTree = "<group>"; };
+		B3AC0DDB306F653000E87733 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = ../../../extension/src/content.js; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B3AC0DA4306F652F00E87733 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		B3AC0DBF306F653000E87733 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		B3AC0D9E306F652F00E87733 = {
+			isa = PBXGroup;
+			children = (
+				B3AC0DA9306F652F00E87733 /* Autodidact */,
+				B3AC0DC6306F653000E87733 /* Autodidact Extension */,
+				B3AC0DA8306F652F00E87733 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B3AC0DA8306F652F00E87733 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B3AC0DA7306F652F00E87733 /* Autodidact.app */,
+				B3AC0DC2306F653000E87733 /* Autodidact Extension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B3AC0DA9306F652F00E87733 /* Autodidact */ = {
+			isa = PBXGroup;
+			children = (
+				B3AC0DAA306F652F00E87733 /* AppDelegate.swift */,
+				B3AC0DB6306F652F00E87733 /* ViewController.swift */,
+				B3AC0DB8306F652F00E87733 /* Main.storyboard */,
+				B3AC0DBB306F653000E87733 /* Assets.xcassets */,
+				B3AC0DBD306F653000E87733 /* Info.plist */,
+				B3AC0DAC306F652F00E87733 /* Resources */,
+			);
+			path = Autodidact;
+			sourceTree = "<group>";
+		};
+		B3AC0DAC306F652F00E87733 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				B3AC0DAD306F652F00E87733 /* Main.html */,
+				B3AC0DB0306F652F00E87733 /* Icon.png */,
+				B3AC0DB2306F652F00E87733 /* Style.css */,
+				B3AC0DB4306F652F00E87733 /* Script.js */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		B3AC0DC6306F653000E87733 /* Autodidact Extension */ = {
+			isa = PBXGroup;
+			children = (
+				B3AC0DD3306F653000E87733 /* Resources */,
+				B3AC0DC7306F653000E87733 /* SafariWebExtensionHandler.swift */,
+				B3AC0DC9306F653000E87733 /* Info.plist */,
+			);
+			path = "Autodidact Extension";
+			sourceTree = "<group>";
+		};
+		B3AC0DD3306F653000E87733 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				B3AC0DD4306F653000E87733 /* popup.js */,
+				B3AC0DD5306F653000E87733 /* background.js */,
+				B3AC0DD6306F653000E87733 /* popup.html */,
+				B3AC0DD7306F653000E87733 /* options.js */,
+				B3AC0DD8306F653000E87733 /* icons */,
+				B3AC0DD9306F653000E87733 /* manifest.json */,
+				B3AC0DDA306F653000E87733 /* options.html */,
+				B3AC0DDB306F653000E87733 /* content.js */,
+			);
+			name = Resources;
+			path = "Autodidact Extension";
+			sourceTree = SOURCE_ROOT;
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B3AC0DA6306F652F00E87733 /* Autodidact */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B3AC0DD0306F653000E87733 /* Build configuration list for PBXNativeTarget "Autodidact" */;
+			buildPhases = (
+				B3AC0DA3306F652F00E87733 /* Sources */,
+				B3AC0DA4306F652F00E87733 /* Frameworks */,
+				B3AC0DA5306F652F00E87733 /* Resources */,
+				B3AC0DCF306F653000E87733 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B3AC0DC5306F653000E87733 /* PBXTargetDependency */,
+			);
+			name = Autodidact;
+			productName = Autodidact;
+			productReference = B3AC0DA7306F652F00E87733 /* Autodidact.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B3AC0DC1306F653000E87733 /* Autodidact Extension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B3AC0DCC306F653000E87733 /* Build configuration list for PBXNativeTarget "Autodidact Extension" */;
+			buildPhases = (
+				B3AC0DBE306F653000E87733 /* Sources */,
+				B3AC0DBF306F653000E87733 /* Frameworks */,
+				B3AC0DC0306F653000E87733 /* Resources */,
+			);
+			buildRules = (
+			);
+			name = "Autodidact Extension";
+			productName = "Autodidact Extension";
+			productReference = B3AC0DC2306F653000E87733 /* Autodidact Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B3AC0D9F306F652F00E87733 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					B3AC0DA6306F652F00E87733 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					B3AC0DC1306F653000E87733 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+				};
+			};
+			buildConfigurationList = B3AC0DA2306F652F00E87733 /* Build configuration list for PBXProject "Autodidact" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = B3AC0D9E306F652F00E87733;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B3AC0DA8306F652F00E87733 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B3AC0DA6306F652F00E87733 /* Autodidact */,
+				B3AC0DC1306F653000E87733 /* Autodidact Extension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B3AC0DA5306F652F00E87733 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+				B3AC0DB1306F652F00E87733 /* Icon.png in Resources */,
+				B3AC0DBA306F652F00E87733 /* Main.storyboard in Resources */,
+				B3AC0DB5306F652F00E87733 /* Script.js in Resources */,
+				B3AC0DAF306F652F00E87733 /* Main.html in Resources */,
+				B3AC0DBC306F653000E87733 /* Assets.xcassets in Resources */,
+				B3AC0DB3306F652F00E87733 /* Style.css in Resources */,
+			);
+		};
+		B3AC0DC0306F653000E87733 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+				B3AC0DE3306F653000E87733 /* content.js in Resources */,
+				B3AC0DE2306F653000E87733 /* options.html in Resources */,
+				B3AC0DDD306F653000E87733 /* background.js in Resources */,
+				B3AC0DDF306F653000E87733 /* options.js in Resources */,
+				B3AC0DDE306F653000E87733 /* popup.html in Resources */,
+				B3AC0DE0306F653000E87733 /* icons in Resources */,
+				B3AC0DE1306F653000E87733 /* manifest.json in Resources */,
+				B3AC0DDC306F653000E87733 /* popup.js in Resources */,
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B3AC0DA3306F652F00E87733 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+				B3AC0DB7306F652F00E87733 /* ViewController.swift in Sources */,
+				B3AC0DAB306F652F00E87733 /* AppDelegate.swift in Sources */,
+			);
+		};
+		B3AC0DBE306F653000E87733 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+				B3AC0DC8306F653000E87733 /* SafariWebExtensionHandler.swift in Sources */,
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B3AC0DC5306F653000E87733 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B3AC0DC1306F653000E87733 /* Autodidact Extension */;
+			targetProxy = B3AC0DC4306F653000E87733 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		B3AC0DAD306F652F00E87733 /* Main.html */ = {
+			isa = PBXVariantGroup;
+			children = (
+				B3AC0DAE306F652F00E87733 /* Base */,
+			);
+			name = Main.html;
+			sourceTree = "<group>";
+		};
+		B3AC0DB8306F652F00E87733 /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				B3AC0DB9306F652F00E87733 /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		B3AC0DCA306F653000E87733 /* Debug configuration for PBXProject "Autodidact" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		B3AC0DCB306F653000E87733 /* Release configuration for PBXProject "Autodidact" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		B3AC0DCD306F653000E87733 /* Debug configuration for PBXNativeTarget "Autodidact Extension" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Autodidact Extension/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Autodidact Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = net.phfactor.autodidact.Extension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B3AC0DCE306F653000E87733 /* Release configuration for PBXNativeTarget "Autodidact Extension" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Autodidact Extension/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Autodidact Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = net.phfactor.autodidact.Extension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		B3AC0DD1306F653000E87733 /* Debug configuration for PBXNativeTarget "Autodidact" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = NSR65JVW9F;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Autodidact/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Autodidact;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				INFOPLIST_KEY_NSViewGestureRecognizerIsExclusive = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = net.phfactor.Autodidact;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B3AC0DD2306F653000E87733 /* Release configuration for PBXNativeTarget "Autodidact" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = NSR65JVW9F;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Autodidact/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Autodidact;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				INFOPLIST_KEY_NSViewGestureRecognizerIsExclusive = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = net.phfactor.Autodidact;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B3AC0DA2306F652F00E87733 /* Build configuration list for PBXProject "Autodidact" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B3AC0DCA306F653000E87733 /* Debug configuration for PBXProject "Autodidact" */,
+				B3AC0DCB306F653000E87733 /* Release configuration for PBXProject "Autodidact" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		B3AC0DCC306F653000E87733 /* Build configuration list for PBXNativeTarget "Autodidact Extension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B3AC0DCD306F653000E87733 /* Debug configuration for PBXNativeTarget "Autodidact Extension" */,
+				B3AC0DCE306F653000E87733 /* Release configuration for PBXNativeTarget "Autodidact Extension" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		B3AC0DD0306F653000E87733 /* Build configuration list for PBXNativeTarget "Autodidact" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B3AC0DD1306F653000E87733 /* Debug configuration for PBXNativeTarget "Autodidact" */,
+				B3AC0DD2306F653000E87733 /* Release configuration for PBXNativeTarget "Autodidact" */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = B3AC0D9F306F652F00E87733 /* Project object */;
+	validationLevel = 1;
+}
