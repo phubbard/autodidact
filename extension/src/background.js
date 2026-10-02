@@ -51,6 +51,11 @@ function globToRegex(glob) {
   return new RegExp('^' + esc + '$', 'i');
 }
 
+// The search UI on the server itself is never worth capturing.
+function isServerPage(url, settings) {
+  try { return new URL(url).origin === new URL(settings.serverUrl).origin; } catch { return false; }
+}
+
 function isBlocked(url, blocklist) {
   let u;
   try { u = new URL(url); } catch { return true; }
@@ -71,6 +76,22 @@ function isBlocked(url, blocklist) {
 
 // ---------- queue ----------
 
+// Safari has rejected storage.local.set() here with "Exceeded storage quota"
+// while the queue held only a couple of pages, including when the write made
+// the queue smaller. A sent item was then never removed and was re-posted every
+// minute. The manifest asks for unlimitedStorage, which lifts the quota (the
+// queue can also legitimately pass 10 MB when the server is unreachable for
+// days). As a fallback, drop the key first so the write is not measured against
+// the old value.
+async function saveQueue(q) {
+  try {
+    await api.storage.local.set({ [QUEUE_KEY]: q });
+  } catch (e) {
+    await api.storage.local.remove(QUEUE_KEY);
+    if (q.length) await api.storage.local.set({ [QUEUE_KEY]: q });
+  }
+}
+
 async function enqueue(item) {
   let { [QUEUE_KEY]: q = [] } = await api.storage.local.get(QUEUE_KEY);
   if (item.path === '/dwell') {
@@ -79,7 +100,7 @@ async function enqueue(item) {
   }
   q.push(item);
   while (q.length > QUEUE_MAX) q.shift();
-  await api.storage.local.set({ [QUEUE_KEY]: q });
+  await saveQueue(q);
   await updateBadge();
 }
 
@@ -95,7 +116,7 @@ async function flush() {
       const res = await post(settings, item);
       if (res === 'ok' || res === 'drop') {
         q = q.slice(1);
-        await api.storage.local.set({ [QUEUE_KEY]: q });
+        await saveQueue(q);
       } else {
         break; // network down; leave the queue for the alarm
       }
@@ -151,6 +172,7 @@ async function handleCapture(payload, sender) {
   const settings = await getSettings();
   if (settings.pausedUntil > Date.now()) return { skipped: 'paused' };
   if (sender.tab?.incognito) return { skipped: 'incognito' };
+  if (isServerPage(payload.url, settings)) return { skipped: 'server' };
   if (isBlocked(payload.url, settings.blocklist)) return { skipped: 'blocked' };
   if (payload.canonical_url && isBlocked(payload.canonical_url, settings.blocklist)) return { skipped: 'blocked' };
   await enqueue({ path: '/ingest', body: payload });
@@ -161,6 +183,7 @@ async function handleCapture(payload, sender) {
 async function handleDwell(payload, sender) {
   const settings = await getSettings();
   if (sender.tab?.incognito) return { skipped: 'incognito' };
+  if (isServerPage(payload.url, settings)) return { skipped: 'server' };
   if (isBlocked(payload.url, settings.blocklist)) return { skipped: 'blocked' };
   await enqueue({ path: '/dwell', body: { visit_id: payload.visit_id, dwell_s: payload.dwell_s } });
   flush();

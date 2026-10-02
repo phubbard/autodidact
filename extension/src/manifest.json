@@ -3,7 +3,7 @@
   "name": "Autodidact",
   "version": "0.1.0",
   "description": "Records the text of pages you dwell on so you can find them again months later.",
-  "permissions": ["storage", "alarms", "activeTab"],
+  "permissions": ["storage", "unlimitedStorage", "alarms", "activeTab"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
