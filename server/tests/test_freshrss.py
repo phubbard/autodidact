@@ -42,6 +42,9 @@ class FakeGReader(BaseHTTPRequestHandler):
         pass
 
     def do_POST(self):
+        # Drain the body: closing a socket with unread data sends RST, not FIN, and
+        # http.client sends the body in a separate write that can land after the reply.
+        self.rfile.read(int(self.headers.get("Content-Length") or 0))
         if self.path.endswith("/accounts/ClientLogin"):
             self.send_response(200); self.end_headers()
             self.wfile.write(b"SID=x\nAuth=paul/abc123\n")
