@@ -4,7 +4,7 @@ Updated 2026-10-01. Keep this current at the end of every working session: what 
 
 ## Where things stand
 
-Milestone 1 (capture + keyword search, two sources) is **built and tested, not yet deployed**. Nothing is running on the Pi yet; no real corpus exists.
+Milestone 1 (capture + keyword search, two sources) is **built, tested, and deployed**. The server runs on the Pi (`webserver`) under systemd at `/srv/autodidact`, Caddy serves `https://autodidact.phfactor.net` to LAN + Tailscale, and `/stats` answers. The corpus is empty until extensions are loaded; FreshRSS sync and enrichment are not yet enabled.
 
 - Repo: `phubbard/autodidact`, `main` at 920e941 + this handoff commit. Local checkout `~/code/autodidact` on Paul's Mac.
 - CI (`.github/workflows/ci.yml`): **green** on 920e941 and 711b098 (both jobs, ~20 s).
@@ -26,15 +26,12 @@ Milestone 1 (capture + keyword search, two sources) is **built and tested, not y
 ## Next steps, in order
 
 1. ~~Confirm CI is green~~ — done 2026-09-18.
-2. **Deploy to the Pi** (webserver). Paul runs, on the Pi:
-   ```sh
-   curl -fsSL https://raw.githubusercontent.com/phubbard/autodidact/main/deploy/install.sh | sudo bash
-   ```
-   That gives `/srv/autodidact/{src,venv,data,env}`, the systemd unit, `/etc/caddy/conf.d/autodidact.caddy` (LAN + Tailscale only; CIDR auto-detected from the Pi's interface), the Caddyfile `import` line if missing, and `/etc/cron.d/autodidact`. It prints the generated token at the end. Before Caddy can serve it: add a local DNS record `autodidact.phfactor.net` → the Pi (Pi-hole / UCG). Then in FreshRSS: Administration → Authentication → allow API access; set an API password on the profile; put `FRESHRSS_URL/USER/API_PASSWORD` in `/srv/autodidact/env` and re-run the installer to enable the hourly sync. Dry-run first: the installer's summary prints the exact `freshrss_sync.py --dry-run` command.
+2. ~~Deploy to the Pi~~ — done 2026-10-01 via `deploy/install.sh` (user `pfh`). DNS: local CNAME on the UCG + Cloudflare CNAME added; the Pi-hole had cached NXDOMAIN from the install run and needed `pihole restartdns`.
 3. **Install the extension** everywhere: `extension/build.sh`, then load unpacked (`dist/chromium`) in Chrome / Brave / Arc / Edge; temporary add-on in Firefox (and grant "Access your data for all websites" in the add-on's Permissions tab). Set server URL + token in Settings, hit "Test connection". For a permanent Firefox install, submit `dist/autodidact-firefox.zip` to AMO as unlisted and install the signed `.xpi`.
 4. **Let the corpus grow** for a few weeks. Then: tune the dwell threshold from the `visits` table (distribution of `dwell_s` on pages Paul later searched for vs. never touched); decide FreshRSS `--mode` (both vs starred) by which corpus searches better.
 5. **M2**: run `embed.py` against LM Studio on Axiom; confirm the loaded model ids (`AUTODIDACT_EMBED_MODEL`, `AUTODIDACT_CHAT_MODEL`); check summary/tag quality on ~20 pages; then add semantic merge into `/search` (embed the query, cosine over an in-memory float32 matrix, blend with BM25 rank).
-6. **M3**: LLM query rewrite (keywords + date range) and rerank of top 20; date slider in UI. **M4**: Safari via `xcrun safari-web-extension-converter extension/dist/chromium`.
+6. **Safari (M4, started early)**: `xcrun safari-web-extension-converter extension/src --project-location safari --app-name Autodidact --bundle-identifier net.phfactor.autodidact --macos-only --no-open` errored on first try; error text not captured. CLAUDE.md has the triage list (xcode-select, stale `safari/` dir, PATH python, manifest, signing). After it builds: enable in Safari, set "Always Allow on Every Website", enter URL + token.
+7. **M3**: LLM query rewrite (keywords + date range) and rerank of top 20; date slider in UI.
 
 ## Decisions waiting on Paul
 
@@ -59,4 +56,5 @@ Milestone 1 (capture + keyword search, two sources) is **built and tested, not y
 - 2026-09-18 — M1 built: extension, server, FTS5, tests, e2e (b7c5db6). FreshRSS source added (9d52dec). CI added (920e941). Pushed to GitHub.
 - 2026-09-18 — Handoff to a Claude Code project: added `CLAUDE.md`, `docs/ARCHITECTURE.md` (exported from the Claude doc), this file, `.claude/settings.json`; fixed hard-coded container path in `e2e.mjs`.
 - 2026-09-18 — Resumed in Claude Code on the Mac: CI confirmed green, 23 tests pass locally (Python 3.14), removed stray `Claude outputs/` duplicate of `.claude/settings.json`.
-- 2026-10-01 — Wrote and sandbox-tested `deploy/install.sh`; removed the static deploy files; README/CLAUDE.md updated. Not yet run on the Pi — next step is Paul running the one-liner on webserver, then adding the DNS record and FreshRSS API credentials.
+- 2026-10-01 — Wrote and sandbox-tested `deploy/install.sh`; removed the static deploy files; README/CLAUDE.md updated.
+- 2026-10-01 — Deployed on webserver with the installer (clean run; local `/stats` OK). DNS records added; Pi-hole negative cache cleared with `pihole restartdns`; https resolves. Built `extension/dist`. Safari converter attempted, errored (undiagnosed). CLAUDE.md rewritten as a full handoff for Claude Code on the Mac; the Cowork/Claude Project side is retired.
