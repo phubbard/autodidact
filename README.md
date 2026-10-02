@@ -10,9 +10,9 @@ This is milestone 1: capture plus keyword search with date and site filters.
 
 ```
 autodidact/
-├── extension/          MV3 WebExtension (one codebase, Chromium + Firefox)
+├── extension/          MV3 WebExtension (one codebase: Chromium, Firefox, Safari)
 │   ├── src/            manifest, content.js, background.js, options, popup
-│   ├── build.sh        → dist/chromium, dist/firefox, and a zip of each
+│   ├── build.sh        → dist/chromium, dist/firefox, a zip of each, and a Firefox .xpi
 │   └── test/e2e.mjs    headless-Chromium end-to-end test
 ├── server/
 │   ├── app.py          Flask: /ingest, /dwell, /search, /page, /stats, UI at /
@@ -20,6 +20,7 @@ autodidact/
 │   ├── freshrss_sync.py  second source: read/starred FreshRSS items via its Google Reader API
 │   ├── embed.py        milestone-2 enrichment job (summaries, tags, embeddings via LM Studio)
 │   └── tests/          pytest
+├── safari/Autodidact/  Xcode project wrapping extension/src for Safari on macOS and iOS
 └── deploy/install.sh   idempotent Pi installer/updater: venv, env, systemd, Caddy, cron
 ```
 
@@ -87,12 +88,49 @@ MV3 treats host permissions as optional: after installing, open the add-on's
 Permissions tab and allow "Access your data for all websites", or nothing is
 captured.
 
+Zen, LibreWolf and other Firefox forks built without mandatory signing can
+install the unsigned build permanently: set `xpinstall.signatures.required` to
+`false` in `about:config`, then `about:addons` → gear → "Install Add-on From
+File" → `extension/dist/autodidact-firefox.xpi`. That pref turns off signature
+checks for every add-on in the profile. To update, install the newer `.xpi`
+the same way and check that the version on the add-on's page changed.
+
 Then click the toolbar icon → Settings, enter the server URL and token, hit
 "Test connection". The popup also has a one-hour pause and a "never record
 this domain" button.
 
-Safari is milestone 4: `xcrun safari-web-extension-converter extension/dist/chromium`
-produces an Xcode project that wraps the same code.
+To update an unpacked Chromium install after pulling new code, run `build.sh`
+again and press reload on the extension's card. `build.sh` recreates `dist/`,
+so the folder the browser loads from is replaced in place.
+
+### Safari (macOS and iOS)
+
+Safari needs the extension wrapped in an app. `safari/Autodidact/Autodidact.xcodeproj`
+does that for both platforms and references `extension/src` directly, so there
+is nothing to copy. You need Xcode and an Apple developer team; set yours on
+all four targets (Signing & Capabilities), since the project carries the
+author's team id.
+
+macOS: choose the `Autodidact (macOS)` scheme with "My Mac" and Run, or
+
+```sh
+cd safari/Autodidact
+xcodebuild -project Autodidact.xcodeproj -scheme "Autodidact (macOS)" -configuration Debug build
+```
+
+then Safari → Settings → Extensions → enable Autodidact, open its row and
+choose "Always Allow on Every Website".
+
+iOS: choose the `Autodidact (iOS)` scheme with your iPhone and Run. On the
+phone, open the app once, then Settings → Apps → Safari → Extensions →
+Autodidact → Allow Extension, and set All Websites to Allow. This covers
+Safari only; other iOS browsers cannot run extensions. The phone reaches the
+server on the home network or over Tailscale; anywhere else captures wait in
+the extension's queue (up to 500) and are sent when the server is reachable.
+
+Each scheme only runs on its own platform; Xcode's "platform doesn't match"
+error means the scheme and the destination disagree. After changing signing
+settings, use Product → Clean Build Folder before building again.
 
 ## How capture works
 
@@ -100,9 +138,12 @@ The content script counts seconds a tab is visible and focused. At the dwell
 threshold (default 8 s) it extracts the main content block, strips nav,
 header, footer, aside, forms and hidden elements, and sends title, URL,
 canonical URL, description, text (≤ 200 KB) and dwell time to the background
-worker. The worker drops it if recording is paused, the window is private, or
-the host matches the blocklist; otherwise it queues it in `storage.local` and
-POSTs with retry every minute, so the server being down loses nothing.
+worker. The worker drops it if recording is paused, the window is private, the
+host matches the blocklist, or the page is on the Autodidact server itself;
+otherwise it queues it in `storage.local` and POSTs with retry every minute,
+so the server being down loses nothing. The manifest requests
+`unlimitedStorage` for that queue: Safari otherwise rejects queue writes as
+over quota, which leaves a sent page stuck at the head and re-sent forever.
 
 SPA navigations are detected by polling the URL once a second (wrapping
 `history.pushState` from a content script does not intercept the page's own

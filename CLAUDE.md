@@ -131,7 +131,7 @@ Things that went wrong, so they are not rediscovered:
 
 Enabling it. macOS: run the app once, Safari → Settings → Extensions → enable Autodidact, open its row and choose **"Always Allow on Every Website"** (Safari treats `<all_urls>` as per-site, like Firefox; without this nothing is captured). iOS: open the app once, then Settings → Apps → Safari → Extensions → Autodidact → Allow Extension, and All Websites → Allow. Then on either: Autodidact popup → Settings → URL + token → Test connection. The phone reaches the server only on home Wi-Fi or Tailscale; elsewhere captures queue (max 500) and flush later. If the extension is missing from Safari on the Mac: Settings → Advanced → "Show features for web developers", Develop → Allow Unsigned Extensions, relaunch.
 
-Still to do: a Safari section in README.md; installing the Mac app somewhere more durable than DerivedData.
+Still to do: installing the Mac app somewhere more durable than DerivedData.
 
 ## Architecture in one paragraph
 
