@@ -4,9 +4,9 @@ Updated 2026-10-01. Keep this current at the end of every working session: what 
 
 ## Where things stand
 
-Milestone 1 (capture + keyword search, two sources) is **built, tested, and deployed**. The server runs on the Pi (`webserver`) under systemd at `/srv/autodidact`, Caddy serves `https://autodidact.phfactor.net` to LAN + Tailscale, and `/stats` answers. The corpus is empty until extensions are loaded; FreshRSS sync and enrichment are not yet enabled.
+Milestone 1 (capture + keyword search, two sources) is **built, tested, and deployed**. The server runs on the Pi (`webserver`) under systemd at `/srv/autodidact`, Caddy serves `https://autodidact.phfactor.net` to LAN + Tailscale, and `/stats` answers. FreshRSS sync is **enabled** (hourly at :17) and its first run put 1,162 pages from 137 domains into the corpus. No browser captures yet: the extensions still have to be loaded. Enrichment is not enabled.
 
-- Repo: `phubbard/autodidact`, `main` at 920e941 + this handoff commit. Local checkout `~/code/autodidact` on Paul's Mac.
+- Repo: `phubbard/autodidact`, `main` at a7dce39 plus this session's commit. Local checkout `~/code/autodidact` on Paul's Mac.
 - CI (`.github/workflows/ci.yml`): **green** on 920e941 and 711b098 (both jobs, ~20 s).
 - Tests: 23 pytest passing locally; `extension/test/e2e.mjs` passed in headless Chromium.
 - The design doc that used to live in a Claude doc is now `docs/ARCHITECTURE.md`. The Claude Project ("autodidact") is being retired in favor of this repo + `CLAUDE.md`.
@@ -30,7 +30,7 @@ Milestone 1 (capture + keyword search, two sources) is **built, tested, and depl
 3. **Install the extension** everywhere: `extension/build.sh`, then load unpacked (`dist/chromium`) in Chrome / Brave / Arc / Edge; temporary add-on in Firefox (and grant "Access your data for all websites" in the add-on's Permissions tab). Set server URL + token in Settings, hit "Test connection". For a permanent Firefox install, submit `dist/autodidact-firefox.zip` to AMO as unlisted and install the signed `.xpi`.
 4. **Let the corpus grow** for a few weeks. Then: tune the dwell threshold from the `visits` table (distribution of `dwell_s` on pages Paul later searched for vs. never touched); decide FreshRSS `--mode` (both vs starred) by which corpus searches better.
 5. **M2**: run `embed.py` against LM Studio on Axiom; confirm the loaded model ids (`AUTODIDACT_EMBED_MODEL`, `AUTODIDACT_CHAT_MODEL`); check summary/tag quality on ~20 pages; then add semantic merge into `/search` (embed the query, cosine over an in-memory float32 matrix, blend with BM25 rank).
-6. **Safari (M4, started early)**: `xcrun safari-web-extension-converter extension/src --project-location safari --app-name Autodidact --bundle-identifier net.phfactor.autodidact --macos-only --no-open` errored on first try; error text not captured. CLAUDE.md has the triage list (xcode-select, stale `safari/` dir, PATH python, manifest, signing). After it builds: enable in Safari, set "Always Allow on Every Website", enter URL + token.
+6. **Safari (M4, started early)**: the Xcode project in `safari/Autodidact/` now builds and signs (`xcodebuild … -scheme Autodidact -configuration Debug build` → BUILD SUCCEEDED, signature verifies, team NSR65JVW9F). The error was signing: the converter set the team only on the app target and gave the app the id `net.phfactor.Autodidact`, which is not a case-sensitive prefix of `net.phfactor.autodidact.Extension`. Fixed in the pbxproj (team on both targets, app id `net.phfactor.autodidact`). **Still to do, by Paul:** run the app once from Xcode, enable the extension in Safari, set "Always Allow on Every Website", enter URL + token, Test connection. Then add a Safari section to README.md.
 7. **M3**: LLM query rewrite (keywords + date range) and rerank of top 20; date slider in UI.
 
 ## Decisions waiting on Paul
@@ -39,7 +39,7 @@ Milestone 1 (capture + keyword search, two sources) is **built, tested, and depl
 - Pi 5 vs Axiom for the server — leaning Pi for storage/search, Axiom for enrichment only; deploy files assume this.
 - Dwell threshold (8 s default) — tune after data.
 - Embedding model on LM Studio — code defaults to `text-embedding-nomic-embed-text-v1.5`.
-- FreshRSS mode (both vs starred) — after data.
+- FreshRSS mode (both vs starred) — the cron runs the default `both`. Data point from 2026-10-01: 1,110 read items and **0 starred** in the previous 7 days, so `starred` would be an empty corpus unless Paul starts starring. About 160 items a day, heaviest feeds NOTUS (176/wk), Chronoscout (70), Boing Boing (67), Ars Technica (63).
 - Backfill from browser history files (`places.sqlite`, Chrome `History`) — cheap head start, thin data.
 
 ## Known rough edges
@@ -48,6 +48,7 @@ Milestone 1 (capture + keyword search, two sources) is **built, tested, and depl
 - `e2e.mjs` requires a manually started server with `AUTODIDACT_TOKEN=e2e-token` and `npm i playwright` in `extension/`; it is not wired into CI.
 - Firefox host-permission grant is a manual post-install step; easy to forget, results in silent non-capture.
 - `MIN_TEXT_CHARS` differs between extension (200) and server (100) on purpose; documented in CLAUDE.md.
+- Full-article fetch gets 401 from `marganna.phfactor.net` (family gate) and 403 from some paywalled sites; those items are stored with the feed's own text, and the failure is one log line each.
 - No retention or size monitoring; `/stats` is the only visibility. Fine for a year at projected volumes.
 
 ## Session log
@@ -58,3 +59,4 @@ Milestone 1 (capture + keyword search, two sources) is **built, tested, and depl
 - 2026-09-18 — Resumed in Claude Code on the Mac: CI confirmed green, 23 tests pass locally (Python 3.14), removed stray `Claude outputs/` duplicate of `.claude/settings.json`.
 - 2026-10-01 — Wrote and sandbox-tested `deploy/install.sh`; removed the static deploy files; README/CLAUDE.md updated.
 - 2026-10-01 — Deployed on webserver with the installer (clean run; local `/stats` OK). DNS records added; Pi-hole negative cache cleared with `pihole restartdns`; https resolves. Built `extension/dist`. Safari converter attempted, errored (undiagnosed). CLAUDE.md rewritten as a full handoff for Claude Code on the Mac; the Cowork/Claude Project side is retired.
+- 2026-10-01 — Claude Code on the Mac: enabled FreshRSS sync on the Pi (`FRESHRSS_URL=http://127.0.0.1:8090`, user `pfh`; dry run verified on both the loopback and `https://news.phfactor.net`), re-ran the installer, ran the first sync by hand: 1,166 sent, 34 skipped, 0 failed in about 5 minutes; DB 10 MB. Reproduced and fixed the Safari build error (signing team + bundle id case). CLAUDE.md updated to match.

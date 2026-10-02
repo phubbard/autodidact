@@ -8,8 +8,8 @@ Owner: Paul Hubbard (pfh@phfactor.net). GitHub: `phubbard/autodidact`. This chec
 
 - **Server is deployed and running** on the Pi at `/srv/autodidact/{src,venv,data,env}`, installed by `deploy/install.sh` (user `pfh`, gunicorn on `127.0.0.1:8765`, systemd unit `autodidact`, Caddy site `/etc/caddy/conf.d/autodidact.caddy`, cron in `/etc/cron.d/autodidact`). `https://autodidact.phfactor.net/stats` answers from the LAN. Corpus is empty until the extensions are loaded.
 - **Extension builds** are in `extension/dist/{chromium,firefox}` (gitignored; regenerate with `extension/build.sh`). Loading them into Chrome/Brave/Arc/Firefox and entering the server URL + token is the next step, if not already done — check `/stats` on the Pi.
-- **Safari** is in progress: the converter ran successfully and `safari/Autodidact/Autodidact.xcodeproj` is committed (references `extension/src` by relative path; team NSR65JVW9F already set). Paul hit an error in Xcode after that, text not captured. See "Safari" below — first suspect is the app target's `MACOSX_DEPLOYMENT_TARGET = 27.0`.
-- **FreshRSS sync** is written and tested against a fake endpoint but not enabled: needs API access turned on in FreshRSS, an API password, and `FRESHRSS_*` in `/srv/autodidact/env`, then a re-run of the installer to add the cron.
+- **Safari** builds: `safari/Autodidact/Autodidact.xcodeproj` (converter output, references `extension/src` by relative path) now compiles and signs from the command line. The error Paul hit was signing, not the deployment target — see "Safari" below. Not yet run or enabled in Safari.
+- **FreshRSS sync is enabled** (2026-10-01): `FRESHRSS_URL=http://127.0.0.1:8090` (the `freshrss` container's published port on the Pi, bypassing DNS and Caddy; `https://news.phfactor.net` also works), user `pfh`, hourly at :17, default `--mode both --days 7`. First run imported about a week of read items (~1,100). Paul had starred nothing in that week, so `--mode starred` would currently be an empty corpus.
 - **Enrichment** (`embed.py`) has never run against a real model.
 
 ## Layout
@@ -74,7 +74,7 @@ journalctl -u caddy -n 30 --no-pager            # certificate / proxy problems
 curl -s http://127.0.0.1:8765/stats             # bypasses Caddy
 curl -s https://autodidact.phfactor.net/stats   # through Caddy (LAN only)
 sudo cat /srv/autodidact/env                    # token and FreshRSS/LLM settings (chmod 600, owner pfh)
-sqlite3 /srv/autodidact/data/autodidact.db 'select count(*), source from pages group by source'
+sqlite3 /srv/autodidact/data/autodidact.db 'select count(*), source from pages group by source'   # sqlite3 CLI is not installed on the Pi; use /stats, or apt install sqlite3
 tail /srv/autodidact/data/freshrss.log /srv/autodidact/data/embed.log
 ```
 
@@ -94,7 +94,7 @@ Facts about the deployment that are easy to get wrong:
 | `AUTODIDACT_TOKEN` | app.py, freshrss_sync.py | `""` | Bearer token for `/ingest`, `/dwell`, `DELETE`. Empty token = ingest refused (503) |
 | `AUTODIDACT_HOST` / `PORT` / `DEBUG` | app.py `__main__` | `127.0.0.1` / `8765` / off | dev server only; gunicorn's bind is in the unit `install.sh` generates |
 | `AUTODIDACT_URL` | freshrss_sync.py | `http://127.0.0.1:8765` | where to POST |
-| `FRESHRSS_URL`, `FRESHRSS_USER`, `FRESHRSS_API_PASSWORD` | freshrss_sync.py | — | GReader API; API access must be enabled in FreshRSS admin, API password set on the profile |
+| `FRESHRSS_URL`, `FRESHRSS_USER`, `FRESHRSS_API_PASSWORD` | freshrss_sync.py | — | GReader API; API access must be enabled in FreshRSS admin, API password set on the profile. On the Pi: `http://127.0.0.1:8090`, `pfh` |
 | `FRESHRSS_STATE` | freshrss_sync.py | `freshrss_state.json` | JSON of seen item ids; cron uses `data/freshrss_state.json` |
 | `AUTODIDACT_LLM_URL` | embed.py | `http://localhost:1234/v1` | LM Studio on Axiom in prod; presence in `env` enables the embed cron |
 | `AUTODIDACT_CHAT_MODEL` | embed.py | `""` (first loaded non-embedding model) | for summary + tags |
@@ -116,10 +116,10 @@ open safari/Autodidact.xcodeproj
 
 Point the converter at `extension/src` (the Chromium manifest is right for Safari; Safari ≥ 16.4 supports MV3 `background.service_worker`) and do not pass `--copy-resources`, so the Xcode project references the source folder and picks up edits on the next build. Drop `--macos-only` to also get an iOS target (covers phone browsing, which FreshRSS does not; dev build or TestFlight on Paul's iPhone).
 
-The conversion is done; do not re-run the converter (it refuses to overwrite, and the project already has the right file references and team). What exists: `safari/Autodidact/Autodidact.xcodeproj` with two targets, the container app `Autodidact` (`net.phfactor.Autodidact`) and `Autodidact Extension` (`net.phfactor.autodidact.Extension`); the extension's resources are PBXFileReferences to `../../../extension/src/*`, so edits in `extension/src` flow into the next Xcode build. Paul hit an error in Xcode after conversion; the text was not captured. Triage, in order:
+The conversion is done; do not re-run the converter (it refuses to overwrite, and the project already has the right file references and team). What exists: `safari/Autodidact/Autodidact.xcodeproj` with two targets, the container app `Autodidact` (`net.phfactor.autodidact`) and `Autodidact Extension` (`net.phfactor.autodidact.Extension`); the extension's resources are PBXFileReferences to `../../../extension/src/*`, so edits in `extension/src` flow into the next Xcode build. Triage if the build or the extension misbehaves, in order:
 
-1. **Deployment target.** The generated app target has `MACOSX_DEPLOYMENT_TARGET = 27.0` while the extension target has `12.0` (`grep -n MACOSX_DEPLOYMENT_TARGET safari/Autodidact/Autodidact.xcodeproj/project.pbxproj`). If this Mac runs an older macOS, Xcode reports the run destination as invalid / "requires macOS 27.0 or later". Set the app target's deployment target to the installed macOS version (`sw_vers -productVersion`) in Build Settings, or edit the pbxproj value; keep both targets at the same value.
-2. **Signing.** Team is set; if the error is a provisioning one, in Signing & Capabilities tick "Automatically manage signing" for both targets and let Xcode register the two bundle ids. "Sign to Run Locally" also works for a Mac-only dev build but then Safari needs Develop → Allow Unsigned Extensions each launch.
+1. **Signing / bundle ids (fixed 2026-10-01).** The converter set `DEVELOPMENT_TEAM` only on the app target and gave the app the id `net.phfactor.Autodidact` while the extension was `net.phfactor.autodidact.Extension`. Xcode reported "Embedded binary is not signed with the same certificate as the parent app", then "Embedded binary's bundle identifier is not prefixed with the parent app's bundle identifier" (the prefix check is case-sensitive). Both targets now carry team NSR65JVW9F and the app id is `net.phfactor.autodidact`. The app target's `MACOSX_DEPLOYMENT_TARGET = 27.0` (extension: `12.0`) is harmless on this Mac, which runs macOS 27.0 / Xcode 27.0; lower it only if the app must run on an older Mac. Reproduce any build error with `xcodebuild -project safari/Autodidact/Autodidact.xcodeproj -scheme Autodidact -configuration Debug build`.
+2. **Provisioning.** If the error is a provisioning one, in Signing & Capabilities tick "Automatically manage signing" for both targets and let Xcode register the two bundle ids. "Sign to Run Locally" also works for a Mac-only dev build but then Safari needs Develop → Allow Unsigned Extensions each launch.
 3. **Stale resources.** If the build complains a file under `extension/src` is missing, `extension/src/icons/` or a renamed file is the usual reason; fix the reference in Xcode's navigator rather than copying files into the bundle.
 4. **Runtime: extension not listed in Safari.** Run the app once from Xcode (it registers the extension with Safari), then Safari → Settings → Extensions. If still absent, Safari → Settings → Advanced → "Show features for web developers", Develop → Allow Unsigned Extensions, relaunch Safari.
 
