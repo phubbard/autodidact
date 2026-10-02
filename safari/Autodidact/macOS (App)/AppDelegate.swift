@@ -1,6 +1,6 @@
 //
 //  AppDelegate.swift
-//  Autodidact
+//  macOS (App)
 //
 //  Created by Paul Hubbard on 10/1/26.
 //

@@ -1,6 +1,6 @@
 //
 //  SafariWebExtensionHandler.swift
-//  Autodidact Extension
+//  Shared (Extension)
 //
 //  Created by Paul Hubbard on 10/1/26.
 //
