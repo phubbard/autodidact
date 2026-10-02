@@ -1,6 +1,6 @@
 # Autodidact — status and handoff
 
-Updated 2026-09-18. Keep this current at the end of every working session: what changed, what's next, what's blocked on Paul.
+Updated 2026-10-01. Keep this current at the end of every working session: what changed, what's next, what's blocked on Paul.
 
 ## Where things stand
 
@@ -21,27 +21,16 @@ Milestone 1 (capture + keyword search, two sources) is **built and tested, not y
 
 **Enrichment** (`server/embed.py`): M2 job — summary + 5 tags (flow into FTS via trigger) and embeddings as float32 blobs, against an OpenAI-compatible endpoint. **Written, never run against a real model.** Model ids are guesses.
 
-**Deploy** (`deploy/`): systemd unit (gunicorn, 2 workers, 127.0.0.1:8765, `User=pi`, `/srv/autodidact/…`), Caddy snippet for `autodidact.phfactor.net` with LAN-only `remote_ip` matcher, cron lines for `freshrss_sync.py` (hourly at :17, `--days 7`) and `embed.py` (every 15 min, `--batch 50`, `AUTODIDACT_LLM_URL=http://axiom.phfactor.net:1234/v1`).
+**Deploy** (`deploy/install.sh`): one idempotent installer/updater, tested in a sandbox against stubbed `systemctl`/`caddy` (two consecutive runs converge; the generated unit's `ExecStart` was exercised against a real gunicorn). Clone/pull to `/srv/autodidact/src`, venv, `env` with generated token (600), hardened systemd unit (gunicorn 2 workers × 4 threads, `ProtectSystem=strict`, `ReadWritePaths=data`), Caddy site in `conf.d` with `remote_ip` = detected LAN CIDR + `100.64.0.0/10` (Tailscale) + loopback, `caddy validate` before reload, cron entries only for configured sources (`FRESHRSS_URL` → hourly sync at :17; `AUTODIDACT_LLM_URL` → embed every 15 min), smoke test of `/stats` locally and via https. The static `deploy/*.service|*.snippet|*.cron` files were removed in favor of the script. Note the earlier Caddy snippet's `192.168.0.0/16 10.0.0.0/8` matcher would have locked Paul out of his own (public /24) LAN; the detection fixes that.
 
 ## Next steps, in order
 
 1. ~~Confirm CI is green~~ — done 2026-09-18.
-2. **Deploy to the Pi.** Runbook:
+2. **Deploy to the Pi** (webserver). Paul runs, on the Pi:
    ```sh
-   sudo mkdir -p /srv/autodidact/data && sudo chown -R pi /srv/autodidact
-   git clone git@github.com:phubbard/autodidact.git /srv/autodidact/src   # or rsync
-   ln -s /srv/autodidact/src/server /srv/autodidact/server
-   python3 -m venv /srv/autodidact/venv && /srv/autodidact/venv/bin/pip install -r /srv/autodidact/server/requirements.txt
-   # /srv/autodidact/env  (chmod 600):
-   #   AUTODIDACT_TOKEN=$(openssl rand -hex 24)
-   #   FRESHRSS_URL=https://…  FRESHRSS_USER=…  FRESHRSS_API_PASSWORD=…
-   sudo cp deploy/autodidact.service /etc/systemd/system/ && sudo systemctl enable --now autodidact
-   # append deploy/Caddyfile.snippet to the Caddyfile, reload caddy
-   sudo cp deploy/freshrss.cron /etc/cron.d/autodidact-freshrss
-   sudo cp deploy/embed.cron    /etc/cron.d/autodidact-embed     # harmless if Axiom is asleep
-   curl -s https://autodidact.phfactor.net/stats
+   curl -fsSL https://raw.githubusercontent.com/phubbard/autodidact/main/deploy/install.sh | sudo bash
    ```
-   In FreshRSS: Administration → Authentication → allow API access; set an API password on the profile. Dry-run the sync first: `python freshrss_sync.py --dry-run --days 3`.
+   That gives `/srv/autodidact/{src,venv,data,env}`, the systemd unit, `/etc/caddy/conf.d/autodidact.caddy` (LAN + Tailscale only; CIDR auto-detected from the Pi's interface), the Caddyfile `import` line if missing, and `/etc/cron.d/autodidact`. It prints the generated token at the end. Before Caddy can serve it: add a local DNS record `autodidact.phfactor.net` → the Pi (Pi-hole / UCG). Then in FreshRSS: Administration → Authentication → allow API access; set an API password on the profile; put `FRESHRSS_URL/USER/API_PASSWORD` in `/srv/autodidact/env` and re-run the installer to enable the hourly sync. Dry-run first: the installer's summary prints the exact `freshrss_sync.py --dry-run` command.
 3. **Install the extension** everywhere: `extension/build.sh`, then load unpacked (`dist/chromium`) in Chrome / Brave / Arc / Edge; temporary add-on in Firefox (and grant "Access your data for all websites" in the add-on's Permissions tab). Set server URL + token in Settings, hit "Test connection". For a permanent Firefox install, submit `dist/autodidact-firefox.zip` to AMO as unlisted and install the signed `.xpi`.
 4. **Let the corpus grow** for a few weeks. Then: tune the dwell threshold from the `visits` table (distribution of `dwell_s` on pages Paul later searched for vs. never touched); decide FreshRSS `--mode` (both vs starred) by which corpus searches better.
 5. **M2**: run `embed.py` against LM Studio on Axiom; confirm the loaded model ids (`AUTODIDACT_EMBED_MODEL`, `AUTODIDACT_CHAT_MODEL`); check summary/tag quality on ~20 pages; then add semantic merge into `/search` (embed the query, cosine over an in-memory float32 matrix, blend with BM25 rank).
@@ -70,3 +59,4 @@ Milestone 1 (capture + keyword search, two sources) is **built and tested, not y
 - 2026-09-18 — M1 built: extension, server, FTS5, tests, e2e (b7c5db6). FreshRSS source added (9d52dec). CI added (920e941). Pushed to GitHub.
 - 2026-09-18 — Handoff to a Claude Code project: added `CLAUDE.md`, `docs/ARCHITECTURE.md` (exported from the Claude doc), this file, `.claude/settings.json`; fixed hard-coded container path in `e2e.mjs`.
 - 2026-09-18 — Resumed in Claude Code on the Mac: CI confirmed green, 23 tests pass locally (Python 3.14), removed stray `Claude outputs/` duplicate of `.claude/settings.json`.
+- 2026-10-01 — Wrote and sandbox-tested `deploy/install.sh`; removed the static deploy files; README/CLAUDE.md updated. Not yet run on the Pi — next step is Paul running the one-liner on webserver, then adding the DNS record and FreshRSS API credentials.

@@ -20,7 +20,7 @@ autodidact/
 │   ├── freshrss_sync.py  second source: read/starred FreshRSS items via its Google Reader API
 │   ├── embed.py        milestone-2 enrichment job (summaries, tags, embeddings via LM Studio)
 │   └── tests/          pytest
-└── deploy/             systemd unit, Caddy snippet, cron lines for freshrss_sync.py and embed.py
+└── deploy/install.sh   idempotent Pi installer/updater: venv, env, systemd, Caddy, cron
 ```
 
 ## Run the server
@@ -34,10 +34,34 @@ AUTODIDACT_DB=./autodidact.db AUTODIDACT_TOKEN=$AUTODIDACT_TOKEN venv/bin/python
 venv/bin/pytest -q tests
 ```
 
-For the Pi: `deploy/autodidact.service` runs it under gunicorn bound to
-localhost; `deploy/Caddyfile.snippet` fronts it as `autodidact.phfactor.net`
-and refuses anything not from the LAN. Put `AUTODIDACT_TOKEN=…` in
-`/srv/autodidact/env`.
+## Deploy to the Pi
+
+One idempotent script installs and later updates everything:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/phubbard/autodidact/main/deploy/install.sh | sudo bash
+```
+
+It clones the repo to `/srv/autodidact/src`, builds a venv, generates a bearer
+token into `/srv/autodidact/env` (chmod 600), installs a hardened systemd unit
+running gunicorn on `127.0.0.1:8765`, drops a Caddy site into
+`/etc/caddy/conf.d/autodidact.caddy` that proxies `autodidact.<your domain>` for
+LAN and Tailscale clients only (the LAN CIDR is read off the Pi's primary
+interface), adds the `import` line to the Caddyfile if it is missing, writes
+`/etc/cron.d/autodidact`, and smoke-tests `/stats`. Re-running it pulls `main`,
+reinstalls requirements, restarts the service, and refreshes cron. Pass
+FreshRSS credentials on the first run or add them to `env` later and re-run:
+
+```sh
+FRESHRSS_URL=https://rss.example.net FRESHRSS_USER=paul FRESHRSS_API_PASSWORD=… \
+AUTODIDACT_LLM_URL=http://axiom.phfactor.net:1234/v1 \
+  sudo -E deploy/install.sh
+```
+
+The cron jobs are only installed for sources that are configured. Knobs:
+`PREFIX`, `RUN_USER`, `SITE_HOST`, `PORT`, `LAN_CIDR`, `BRANCH`, `DRY_RUN=1`.
+Two things the script cannot do for you: create the DNS record for
+`autodidact.<domain>` pointing at the Pi, and enable API access in FreshRSS.
 
 Endpoints: `POST /ingest` and `POST /dwell` (bearer token) take what the
 extension sends; `GET /search?q=&after=&before=&domain=&limit=&offset=` returns
@@ -121,7 +145,7 @@ python freshrss_sync.py --dry-run --days 3        # see what would be sent
 python freshrss_sync.py --state ./freshrss_state.json
 ```
 
-`deploy/freshrss.cron` runs it hourly. Search results show `rss · <feed>` on
+`deploy/install.sh` installs an hourly cron job for it once `FRESHRSS_URL` is in `/srv/autodidact/env`. Search results show `rss · <feed>` on
 these hits, the UI has a browser/rss filter, and starred items are findable
 by searching `starred` or the feed's name.
 
@@ -135,8 +159,9 @@ see which corpus searches better.
 `server/embed.py` fills `summary` and `tags` (which flow into the FTS index
 through a trigger, so keyword search improves immediately) and stores
 embeddings for the later semantic layer. It talks to any OpenAI-compatible
-endpoint; `deploy/embed.cron` runs it against LM Studio on Axiom every 15
-minutes and simply does nothing when Axiom is asleep.
+endpoint; `deploy/install.sh` installs a cron job running it every 15 minutes
+against LM Studio on Axiom once `AUTODIDACT_LLM_URL` is in
+`/srv/autodidact/env`, and it simply does nothing when Axiom is asleep.
 
 ## Tests
 
