@@ -17,6 +17,8 @@ jq '
 
 (cd dist/chromium && zip -qr ../autodidact-chromium.zip .)
 (cd dist/firefox && zip -qr ../autodidact-firefox.zip .)
+# Same archive under the name Firefox-family "Install Add-on From File" expects.
+cp dist/autodidact-firefox.zip dist/autodidact-firefox.xpi
 
 echo "built:"
-ls -1 dist/*.zip
+ls -1 dist/*.zip dist/*.xpi
