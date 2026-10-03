@@ -28,6 +28,10 @@
   <input type="password" id="token">
   <div class="hint">Must match <code>AUTODIDACT_TOKEN</code> on the server.</div>
 
+  <label for="deviceName">Device name</label>
+  <input type="text" id="deviceName" placeholder="MacBook Air · Brave" maxlength="64">
+  <div class="hint">Optional. Shown on the server's debug page so you can tell your browsers and machines apart.</div>
+
   <label for="dwellSeconds">Dwell threshold (seconds)</label>
   <input type="number" id="dwellSeconds" min="2" max="120">
   <div class="hint">A page is recorded only after it has been visible and focused this long.</div>

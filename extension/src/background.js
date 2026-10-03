@@ -9,6 +9,7 @@ const api = globalThis.browser ?? globalThis.chrome;
 const DEFAULTS = {
   serverUrl: 'http://localhost:8765',
   token: '',
+  deviceName: '',
   dwellSeconds: 8,
   pausedUntil: 0,
   blocklist: [
@@ -127,6 +128,14 @@ async function flush() {
   }
 }
 
+// Sent on every request so the server's /debug page can say which machine it
+// came from; reverse DNS on the LAN only gives generic DHCP names. URL-encoded
+// because fetch() throws on header values outside Latin-1 (a curly apostrophe
+// in "Paul’s iPhone" would otherwise wedge the queue).
+function deviceHeader(settings) {
+  return settings.deviceName ? { 'X-Autodidact-Device': encodeURIComponent(settings.deviceName) } : {};
+}
+
 async function post(settings, item) {
   const base = settings.serverUrl.replace(/\/+$/, '');
   try {
@@ -135,6 +144,7 @@ async function post(settings, item) {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + settings.token,
+        ...deviceHeader(settings),
       },
       body: JSON.stringify(item.body),
     });
@@ -212,7 +222,7 @@ async function testConnection() {
   const base = settings.serverUrl.replace(/\/+$/, '');
   try {
     const r = await fetch(base + '/stats', {
-      headers: { 'Authorization': 'Bearer ' + settings.token },
+      headers: { 'Authorization': 'Bearer ' + settings.token, ...deviceHeader(settings) },
     });
     if (!r.ok) return { ok: false, error: 'HTTP ' + r.status };
     return { ok: true, stats: await r.json() };

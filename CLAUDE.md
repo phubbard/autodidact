@@ -27,7 +27,7 @@ server/app.py         Flask app factory create_app(db_path, token); all HTTP rou
 server/db.py          schema (pages, visits, embeddings, pages_fts), MIGRATIONS, normalize_url
 server/freshrss_sync.py  Google Reader API client → POST /ingest with source=rss
 server/embed.py       M2 enrichment job: summary + tags + embeddings via OpenAI-compatible endpoint
-server/templates/     index.html (search UI), page.html (stored text view)
+server/templates/     index.html (search UI), page.html (stored text view), debug.html (recent requests)
 server/tests/         pytest: test_app.py (Flask client), test_freshrss.py (fake GReader + live server)
 deploy/install.sh     idempotent Pi installer/updater: clone/pull, venv, env+token, systemd, Caddy conf.d, cron
 safari/Autodidact/    Xcode project from safari-web-extension-converter: iOS + macOS app and extension targets
@@ -157,6 +157,9 @@ Two sources feed one server. The extension is deliberately dumb: it knows the bl
 - Messages sent from `pagehide`/`beforeunload` get dropped by MV3 service workers. Dwell is reported by a 15 s heartbeat instead (`DWELL_HEARTBEAT_S`), and `/dwell` upserts on the client-generated `visit_id`. The background worker coalesces queued heartbeats per visit.
 - Safari can reject `storage.local.set()` with "Exceeded storage quota" on a queue of only a few pages, even for a write that shrinks it. The POST has already succeeded by then, so the item is re-sent every minute and nothing behind it moves; the server shows repeated `/ingest` 200s with `created: false`. The manifest's `unlimitedStorage` permission and `saveQueue()`'s remove-then-set fallback are both there for this. Don't drop either.
 - MV3 service workers are killed when idle; the queue and settings must live in `storage.local`, never in module globals. The 1-minute `alarms` retry is what wakes the worker to flush.
+- `app.py` wraps the WSGI app in `ProxyFix(x_for=1)` so `request.remote_addr` is the real client behind Caddy. That is only safe because gunicorn binds 127.0.0.1; if it ever listens on a LAN address, X-Forwarded-For becomes spoofable.
+- The `requests` table (for `/debug`) is written in an `after_request` hook on every request except `/debug*`, wrapped so a logging failure can never fail the request, and pruned to `REQUEST_LOG_KEEP` rows. Metadata only: never store bodies or page text there. Reverse DNS for it runs only when `/debug/requests` is read, cached, with a 0.8 s budget; on the LAN it mostly yields `dhcp-NNN.phfactor.net`, which is why the extension has a "Device name" setting.
+- The extension sends that device name URL-encoded in `X-Autodidact-Device`: `fetch()` throws on header values outside Latin-1, and a throw there leaves the item at the head of the queue for good.
 - Pages on the configured server's own origin are never captured (`isServerPage` in `background.js`), so the search UI does not index itself.
 - The default blocklist includes `localhost`, `127.0.0.1`, `192.168.*` and `10.*`. The e2e test has to remove `127.0.0.1` to capture its fixture site; a LAN page on `204.128.136.*` is *not* blocked by default.
 - Firefox MV3 treats `<all_urls>` host permission as optional. After install the user must grant "Access your data for all websites" or nothing is captured. Safari has the equivalent ("Always Allow on Every Website"). Doc issue, not a code bug.

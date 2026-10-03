@@ -70,7 +70,11 @@ extension sends; `GET /search?q=&after=&before=&domain=&limit=&offset=` returns
 JSON hits with highlighted snippets, or the most recent pages when `q` is
 empty; `GET /page/<id>` returns the stored text (JSON, or HTML with
 `?format=html`); `DELETE /page/<id>` and `DELETE /domain/<d>` (bearer token)
-remove mistakes; `GET /stats` for counts.
+remove mistakes; `GET /stats` for counts. `GET /debug` is a page listing the
+most recent requests (time, path, status, client IP and reverse-DNS name,
+browser, OS, and for ingests whether the page was new); its data is at
+`GET /debug/requests?limit=50&quiet=1`. The server keeps the last 2,000
+requests, metadata only, never page text.
 
 ## Install the extension
 
@@ -97,7 +101,10 @@ checks for every add-on in the profile. To update, install the newer `.xpi`
 the same way and check that the version on the add-on's page changed.
 
 Then click the toolbar icon → Settings, enter the server URL and token, hit
-"Test connection". The popup also has a one-hour pause and a "never record
+"Test connection". The optional "Device name" (say "MacBook Air · Brave") is
+sent with every request so the debug page can tell your browsers apart;
+otherwise it can only show the IP's reverse-DNS name, and Chromium browsers
+all call themselves Chrome. The popup also has a one-hour pause and a "never record
 this domain" button.
 
 To update an unpacked Chromium install after pulling new code, run `build.sh`

@@ -169,3 +169,83 @@ def test_index_and_page_html(client):
     assert client.get("/").status_code == 200
     html = client.get(f"/page/{r.json['id']}?format=html").data.decode()
     assert "WAL mode explained" in html and "checkpointed" in html
+
+
+# ---------- request log / debug page ----------
+
+import app as app_module  # noqa: E402
+
+SAFARI_MAC = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+              "(KHTML, like Gecko) Version/27.0 Safari/605.1.15")
+
+
+@pytest.fixture
+def no_rdns(monkeypatch):
+    monkeypatch.setattr(app_module, "_hostnames", lambda ips: {ip: f"host-{ip}" for ip in ips})
+
+
+def test_request_log_records_client_metadata(client, no_rdns):
+    client.post("/ingest", json=capture("https://a.com/wal"), headers={
+        **HEADERS, "X-Forwarded-For": "204.128.136.63", "User-Agent": SAFARI_MAC,
+        "X-Autodidact-Device": "Paul%E2%80%99s%20MacBook%20Air"})
+    client.post("/ingest", json=capture("https://a.com/wal"), headers=HEADERS)
+    rows = client.get("/debug/requests").json["requests"]
+    assert [r["note"] for r in rows] == ["web a.com: new visit", "web a.com: new page"]
+    first = rows[1]
+    assert (first["method"], first["path"], first["status"]) == ("POST", "/ingest", 200)
+    assert first["ip"] == "204.128.136.63" and first["hostname"] == "host-204.128.136.63"
+    assert first["device"] == "Paul’s MacBook Air"
+    assert (first["browser"], first["os"]) == ("Safari 27.0", "macOS")
+    assert rows[0]["ip"] == "127.0.0.1" and rows[0]["device"] is None
+    assert "checkpointed" not in str(rows)  # no page text in the log
+
+
+def test_request_log_quiet_filter_and_errors(client, no_rdns):
+    client.get("/debug")  # the debug page itself is never logged
+    client.options("/ingest")
+    client.post("/dwell", json={"visit_id": "nope", "dwell_s": 20}, headers=HEADERS)
+    client.get("/search?q=wal")
+    every = client.get("/debug/requests").json["requests"]
+    assert [(r["method"], r["path"]) for r in every] == [("GET", "/search"), ("POST", "/dwell"), ("OPTIONS", "/ingest")]
+    assert every[0]["query"] == "q=wal"
+    assert every[1]["status"] == 404 and every[1]["note"] == "unknown visit_id"
+    quiet = client.get("/debug/requests?quiet=1").json["requests"]
+    assert [r["path"] for r in quiet] == ["/search", "/dwell"]  # failed heartbeats stay visible
+    assert client.get("/debug").status_code == 200
+
+
+def test_request_log_is_pruned(client, no_rdns, monkeypatch):
+    monkeypatch.setattr(app_module, "REQUEST_LOG_KEEP", 5)
+    for _ in range(100):
+        client.get("/stats")
+    assert len(client.get("/debug/requests?limit=500").json["requests"]) == 5
+
+
+def test_cors_allows_device_header(client):
+    assert "X-Autodidact-Device" in client.options("/ingest").headers["Access-Control-Allow-Headers"]
+
+
+@pytest.mark.parametrize("ua,expected", [
+    (SAFARI_MAC, ("Safari 27.0", "macOS")),
+    ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) "
+     "Version/27.0.1 Mobile/15E148 Safari/604.1", ("Safari 27.0", "iOS")),
+    ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) "
+     "Chrome/154.0.0.0 Safari/537.36", ("Chrome 154", "macOS")),
+    ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:156.0) Gecko/20100101 Firefox/156.0", ("Firefox 156", "macOS")),
+    ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 "
+     "Safari/537.36 Edg/150.0.0.0", ("Edge 150", "Windows")),
+    ("Python-urllib/3.11", ("Python urllib", "")),
+    ("curl/7.88.1", ("curl", "")),
+    ("", ("", "")),
+])
+def test_ua_summary(ua, expected):
+    assert app_module._ua_summary(ua) == expected
+
+
+def test_hostnames_cache_and_loopback(monkeypatch):
+    calls = []
+    monkeypatch.setattr(app_module.socket, "gethostbyaddr", lambda ip: calls.append(ip) or (f"h{len(calls)}", [], [ip]))
+    monkeypatch.setattr(app_module, "_rdns_cache", {})
+    assert app_module._hostnames({"10.0.0.9", "127.0.0.1"}) == {"10.0.0.9": "h1", "127.0.0.1": "localhost"}
+    assert app_module._hostnames({"10.0.0.9"}) == {"10.0.0.9": "h1"}
+    assert calls == ["10.0.0.9"]

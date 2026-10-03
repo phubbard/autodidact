@@ -7,13 +7,19 @@ Environment:
 """
 
 import datetime as dt
+import html
 import json
 import os
 import re
+import socket
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
+from urllib.parse import unquote
 
 from flask import Flask, abort, g, jsonify, render_template, request
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
 
@@ -22,6 +28,8 @@ MAX_TEXT_CHARS = 250_000
 DEFAULT_LIMIT = 25
 MAX_LIMIT = 200
 SOURCES = {"web", "rss"}
+REQUEST_LOG_KEEP = 2000          # rows kept in the requests table for /debug
+REQUEST_LOG_SKIP = ("/debug",)   # the debug page polling itself is not interesting
 
 
 def create_app(db_path=None, token=None):
@@ -29,6 +37,10 @@ def create_app(db_path=None, token=None):
     app.config["DB_PATH"] = db_path or os.environ.get("AUTODIDACT_DB", "autodidact.db")
     app.config["TOKEN"] = token if token is not None else os.environ.get("AUTODIDACT_TOKEN", "")
     app.config["JSON_SORT_KEYS"] = False
+    # gunicorn listens on loopback only and Caddy sets X-Forwarded-For, so the
+    # last hop in that header is the real client. Requests that skip Caddy
+    # (freshrss_sync.py, curl on the Pi) have no header and stay 127.0.0.1.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
 
     # Make sure the schema exists before the first request.
     db.connect(app.config["DB_PATH"]).close()
@@ -46,10 +58,41 @@ def create_app(db_path=None, token=None):
         if conn is not None:
             conn.close()
 
+    @app.before_request
+    def start_timer():
+        g.t0 = time.perf_counter()
+
+    @app.after_request
+    def log_request(resp):
+        if request.path.startswith(REQUEST_LOG_SKIP) or request.path.startswith("/static"):
+            return resp
+        try:
+            note = g.get("req_note")
+            if note is None and resp.status_code >= 400 and not resp.is_json:
+                m = re.search(r"<p>(.*?)</p>", resp.get_data(as_text=True), re.S)
+                note = html.unescape(m.group(1)).strip().split(". ")[0] if m else None
+            conn = get_db()
+            cur = conn.execute(
+                "INSERT INTO requests (ts, method, path, query, status, ms, ip, ua, device, note)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (time.time(), request.method, request.path[:300],
+                 request.query_string.decode("utf-8", "replace")[:300] or None, resp.status_code,
+                 round((time.perf_counter() - g.get("t0", time.perf_counter())) * 1000, 1),
+                 request.remote_addr, (request.headers.get("User-Agent") or "")[:300] or None,
+                 unquote(request.headers.get("X-Autodidact-Device") or "").strip()[:64] or None,
+                 (note or "")[:200] or None),
+            )
+            if cur.lastrowid % 100 == 0:
+                conn.execute("DELETE FROM requests WHERE id <= ?", (cur.lastrowid - REQUEST_LOG_KEEP,))
+            conn.commit()
+        except Exception as e:  # logging must never break a request
+            app.logger.warning("request log failed: %s", e)
+        return resp
+
     @app.after_request
     def cors(resp):
         resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+        resp.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Autodidact-Device"
         resp.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
         return resp
 
@@ -128,6 +171,8 @@ def create_app(db_path=None, token=None):
             conn.execute("UPDATE visits SET dwell_s = MAX(dwell_s, ?) WHERE visit_id = ?", (dwell, visit_id))
         _refresh_page_stats(conn, page_id)
         conn.commit()
+        g.req_note = f"{source} {db.domain_of(norm)}: " + (
+            "new page" if created else "new visit" if new_visit else "already stored")
         return jsonify({"id": page_id, "created": created, "new_visit": new_visit})
 
     @app.post("/dwell")
@@ -141,7 +186,8 @@ def create_app(db_path=None, token=None):
         conn = get_db()
         row = conn.execute("SELECT page_id FROM visits WHERE visit_id = ?", (visit_id,)).fetchone()
         if row is None:
-            abort(404)
+            abort(404, "unknown visit_id")
+        g.req_note = f"{dwell_s}s"
         conn.execute("UPDATE visits SET dwell_s = MAX(dwell_s, ?) WHERE visit_id = ?", (dwell_s, visit_id))
         _refresh_page_stats(conn, row["page_id"])
         conn.commit()
@@ -250,6 +296,27 @@ def create_app(db_path=None, token=None):
     def index():
         return render_template("index.html")
 
+    # ---------- debug ----------
+
+    @app.get("/debug")
+    def debug_page():
+        return render_template("debug.html")
+
+    @app.get("/debug/requests")
+    def debug_requests():
+        limit = min(500, max(1, int(request.args.get("limit") or 50)))
+        quiet = request.args.get("quiet") == "1"
+        # quiet hides the routine noise (preflights, successful heartbeats) but keeps failures.
+        where = "WHERE method != 'OPTIONS' AND NOT (path = '/dwell' AND status < 400)" if quiet else ""
+        rows = [dict(r) for r in get_db().execute(
+            f"SELECT * FROM requests {where} ORDER BY id DESC LIMIT ?", (limit,))]
+        names = _hostnames({r["ip"] for r in rows if r["ip"]})
+        for r in rows:
+            r["browser"], r["os"] = _ua_summary(r["ua"] or "")
+            r["hostname"] = names.get(r["ip"], "")
+            r["time_iso"] = dt.datetime.fromtimestamp(r["ts"]).strftime("%Y-%m-%d %H:%M:%S")
+        return jsonify({"now": time.time(), "requests": rows})
+
     return app
 
 
@@ -325,6 +392,75 @@ def _browser_name(ua: str) -> str:
         if name in ua:
             return {"Edg": "Edge", "OPR": "Opera"}.get(name, name)
     return ua[:40]
+
+
+_UA_BROWSERS = [  # first match wins; Chromium browsers (Brave, Arc, Vivaldi) all report Chrome
+    (re.compile(r"Edg(?:A|iOS)?/(\d+)"), "Edge"),
+    (re.compile(r"OPR/(\d+)"), "Opera"),
+    (re.compile(r"(?:Firefox|FxiOS)/(\d+)"), "Firefox"),
+    (re.compile(r"(?:Chrome|CriOS)/(\d+)"), "Chrome"),
+    (re.compile(r"Version/(\d+(?:\.\d+)?).*Safari/"), "Safari"),
+]
+_UA_OS = [("iPhone", "iOS"), ("iPad", "iPadOS"), ("Android", "Android"), ("Windows", "Windows"),
+          ("CrOS", "ChromeOS"), ("Macintosh", "macOS"), ("Linux", "Linux")]
+
+
+def _ua_summary(ua: str):
+    """(browser, os) from a User-Agent string. OS versions in UAs are frozen, so none are shown."""
+    if not ua:
+        return "", ""
+    for prefix, name in (("Python-urllib", "Python urllib"), ("curl/", "curl"),
+                         ("NetworkingExtension", "iOS link preview")):
+        if ua.startswith(prefix):
+            return name, ""
+    if "facebookexternalhit" in ua:
+        return "link preview", ""
+    os_name = next((name for key, name in _UA_OS if key in ua), "")
+    for rx, name in _UA_BROWSERS:
+        m = rx.search(ua)
+        if m:
+            return f"{name} {m.group(1)}", os_name
+    return ua.split(" ")[0][:40], os_name
+
+
+_rdns_cache: dict = {}   # ip -> (hostname, expires_at)
+_rdns_lock = threading.Lock()
+_rdns_pool = None
+
+
+def _reverse_dns(ip: str) -> str:
+    try:
+        name = "localhost" if ip in ("127.0.0.1", "::1") else socket.gethostbyaddr(ip)[0]
+    except (OSError, ValueError):
+        name = ""
+    with _rdns_lock:
+        _rdns_cache[ip] = (name, time.time() + (3600 if name else 600))
+    return name
+
+
+def _hostnames(ips, timeout=0.8) -> dict:
+    """Best-effort reverse DNS, cached. Lookups that miss the deadline finish in
+    the background and fill the cache for the next poll; they never block long."""
+    global _rdns_pool
+    now, out, pending = time.time(), {}, {}
+    with _rdns_lock:
+        for ip in ips:
+            hit = _rdns_cache.get(ip)
+            if hit and hit[1] > now:
+                out[ip] = hit[0]
+            else:
+                pending[ip] = None
+        if pending and _rdns_pool is None:
+            _rdns_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="rdns")
+    for ip in pending:
+        pending[ip] = _rdns_pool.submit(_reverse_dns, ip)
+    deadline = now + timeout
+    for ip, fut in pending.items():
+        try:
+            out[ip] = fut.result(timeout=max(0.0, deadline - time.time()))
+        except Exception:
+            out[ip] = ""
+    return out
 
 
 if __name__ == "__main__":

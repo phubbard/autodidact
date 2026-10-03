@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Autodidact · debug</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --fg: #1a1a1a; --muted: #6b7280; --bg: #ffffff; --card: #f6f7f9; --accent: #2563eb; --line: #e5e7eb;
+      --ok: #15803d; --warn: #b45309; --err: #b91c1c;
+      font-family: -apple-system, system-ui, "Segoe UI", sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --fg: #e5e7eb; --muted: #9ca3af; --bg: #111214; --card: #1b1d21; --accent: #60a5fa; --line: #2a2d33;
+              --ok: #4ade80; --warn: #fbbf24; --err: #f87171; }
+    }
+    body { margin: 0; background: var(--bg); color: var(--fg); }
+    main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+    h1 { font-size: 1.1rem; margin: 0 0 1rem; display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+    h1 small, h1 a { color: var(--muted); font-weight: 400; font-size: .8rem; }
+    .controls { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; color: var(--muted); font-size: .85rem; margin-bottom: .8rem; }
+    select { font: inherit; background: var(--card); color: var(--fg); border: 1px solid var(--muted); border-radius: 6px; padding: .15rem .3rem; }
+    .wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+    table { border-collapse: collapse; width: 100%; font-size: .82rem; }
+    th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
+    th { color: var(--muted); font-weight: 500; background: var(--card); position: sticky; top: 0; }
+    tr:last-child td { border-bottom: 0; }
+    td.req { white-space: normal; word-break: break-all; min-width: 14rem; }
+    td.note { white-space: normal; min-width: 12rem; color: var(--muted); }
+    .sub { color: var(--muted); font-size: .75rem; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .s2 { color: var(--ok); } .s3 { color: var(--muted); } .s4 { color: var(--warn); } .s5 { color: var(--err); }
+    .method { font-weight: 600; }
+    #empty { color: var(--muted); padding: 1rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1><span>Autodidact · recent requests</span> <span><small id="status"></small> &nbsp; <a href="/">search</a></span></h1>
+  <div class="controls">
+    <label><input type="checkbox" id="auto" checked> refresh every 5 s</label>
+    <label><input type="checkbox" id="noisy"> show successful dwell heartbeats and CORS preflights</label>
+    <label>rows <select id="limit"><option>25</option><option selected>50</option><option>100</option><option>200</option></select></label>
+  </div>
+  <div class="wrap">
+    <table>
+      <thead><tr>
+        <th>time</th><th>request</th><th class="num">status</th><th class="num">ms</th>
+        <th>client</th><th>browser</th><th>OS</th><th>result</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="empty" hidden>No requests logged yet.</div>
+  </div>
+  <p class="sub">Client is the device name set in the extension's options when there is one, otherwise reverse DNS of the IP.
+    Brave, Arc and Vivaldi report themselves as Chrome; Zen reports Firefox. Requests from the Pi itself (the FreshRSS sync) show as localhost.</p>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function ago(sec) {
+  if (sec < 60) return Math.round(sec) + 's ago';
+  if (sec < 3600) return Math.round(sec / 60) + 'm ago';
+  if (sec < 86400) return Math.round(sec / 3600) + 'h ago';
+  return Math.round(sec / 86400) + 'd ago';
+}
+
+let timer = null;
+async function load() {
+  const p = new URLSearchParams({ limit: $('#limit').value });
+  if (!$('#noisy').checked) p.set('quiet', '1');
+  try {
+    const r = await fetch('/debug/requests?' + p);
+    const d = await r.json();
+    $('#empty').hidden = d.requests.length > 0;
+    $('#rows').innerHTML = d.requests.map((q) => {
+      const client = q.device || q.hostname || q.ip || '';
+      const clientSub = (q.device && q.hostname) ? `${q.hostname} · ${q.ip}` : (client !== q.ip ? q.ip : '');
+      const query = q.query ? `<span class="sub">?${esc(q.query)}</span>` : '';
+      return `<tr>
+        <td>${esc(q.time_iso.slice(11))}<div class="sub">${ago(d.now - q.ts)}</div></td>
+        <td class="req"><span class="method">${esc(q.method)}</span> ${esc(q.path)}${query}</td>
+        <td class="num s${String(q.status)[0]}">${esc(q.status)}</td>
+        <td class="num">${q.ms == null ? '' : esc(q.ms)}</td>
+        <td>${esc(client)}<div class="sub">${esc(clientSub)}</div></td>
+        <td>${esc(q.browser)}</td>
+        <td>${esc(q.os)}</td>
+        <td class="note">${esc(q.note)}</td>
+      </tr>`;
+    }).join('');
+    $('#status').textContent = 'updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    $('#status').textContent = 'refresh failed: ' + e;
+  }
+}
+function schedule() {
+  clearInterval(timer);
+  if ($('#auto').checked) timer = setInterval(load, 5000);
+}
+for (const id of ['#noisy', '#limit']) $(id).addEventListener('change', load);
+$('#auto').addEventListener('change', schedule);
+load();
+schedule();
+</script>
+</body>
+</html>

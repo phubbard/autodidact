@@ -54,6 +54,22 @@ CREATE TABLE IF NOT EXISTS embeddings (
   vector  BLOB NOT NULL
 );
 
+-- Recent HTTP requests for the /debug page. Metadata only, never page text;
+-- pruned to the newest REQUEST_LOG_KEEP rows by the app.
+CREATE TABLE IF NOT EXISTS requests (
+  id      INTEGER PRIMARY KEY,
+  ts      REAL NOT NULL,
+  method  TEXT NOT NULL,
+  path    TEXT NOT NULL,
+  query   TEXT,
+  status  INTEGER,
+  ms      REAL,
+  ip      TEXT,
+  ua      TEXT,
+  device  TEXT,   -- X-Autodidact-Device header, set in the extension's options
+  note    TEXT    -- e.g. "example.com new page" for /ingest
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
   title, description, text, summary, tags, domain,
   content='pages', content_rowid='id',

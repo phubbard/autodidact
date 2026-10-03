@@ -5,6 +5,7 @@ async function load() {
   const s = await api.runtime.sendMessage({ type: 'settings' });
   $('serverUrl').value = s.serverUrl || '';
   $('token').value = s.token || '';
+  $('deviceName').value = s.deviceName || '';
   $('dwellSeconds').value = s.dwellSeconds ?? 8;
   $('blocklist').value = (s.blocklist || []).join('\n');
 }
@@ -14,6 +15,7 @@ async function save() {
   await api.storage.local.set({
     serverUrl: $('serverUrl').value.trim().replace(/\/+$/, ''),
     token: $('token').value.trim(),
+    deviceName: $('deviceName').value.trim().slice(0, 64),
     dwellSeconds: Math.max(2, Number($('dwellSeconds').value) || 8),
     blocklist,
   });
