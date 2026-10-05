@@ -7,7 +7,7 @@
     :root { color-scheme: light dark; font-family: -apple-system, system-ui, sans-serif; }
     body { max-width: 640px; margin: 2rem auto; padding: 0 1rem; line-height: 1.4; }
     label { display: block; font-weight: 600; margin-top: 1.2rem; }
-    input[type=text], input[type=password], input[type=number], textarea {
+    input[type=text], input[type=url], input[type=password], input[type=number], textarea {
       width: 100%; box-sizing: border-box; font: inherit; padding: .4rem .5rem; margin-top: .3rem;
     }
     textarea { font-family: ui-monospace, monospace; min-height: 14rem; }
@@ -21,11 +21,11 @@
   <h1>Autodidact</h1>
 
   <label for="serverUrl">Server URL</label>
-  <input type="text" id="serverUrl" placeholder="http://autodidact.phfactor.net">
+  <input type="url" id="serverUrl" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="url" placeholder="https://autodidact.phfactor.net">
   <div class="hint">Where the Flask ingest server runs. No trailing slash.</div>
 
   <label for="token">Bearer token</label>
-  <input type="password" id="token">
+  <input type="password" id="token" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off">
   <div class="hint">Must match <code>AUTODIDACT_TOKEN</code> on the server.</div>
 
   <label for="deviceName">Device name</label>

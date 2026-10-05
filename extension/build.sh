@@ -10,9 +10,14 @@ mkdir -p dist/chromium dist/firefox
 cp -r src/. dist/chromium/
 cp -r src/. dist/firefox/
 
+# nativeMessaging is only for Safari, whose app extension keeps a backup of the
+# settings. Chromium and Firefox would show a scary permission prompt for it.
+jq '.permissions -= ["nativeMessaging"]' src/manifest.json > dist/chromium/manifest.json
+
 jq '
   .background = { "scripts": ["background.js"] }
   | .browser_specific_settings = { "gecko": { "id": "autodidact@phfactor.net", "strict_min_version": "128.0" } }
+  | .permissions -= ["nativeMessaging"]
 ' src/manifest.json > dist/firefox/manifest.json
 
 (cd dist/chromium && zip -qr ../autodidact-chromium.zip .)

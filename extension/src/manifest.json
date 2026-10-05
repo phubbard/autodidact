@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Autodidact",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Records the text of pages you dwell on so you can find them again months later.",
-  "permissions": ["storage", "unlimitedStorage", "alarms", "activeTab"],
+  "permissions": ["storage", "unlimitedStorage", "alarms", "activeTab", "nativeMessaging"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

@@ -43,8 +43,52 @@ const ALARM = 'autodidact-flush';
 // ---------- settings ----------
 
 async function getSettings() {
+  await syncSettingsBackup();
   const v = await api.storage.local.get(DEFAULTS);
   return { ...DEFAULTS, ...v };
+}
+
+// ---------- settings backup (Safari) ----------
+//
+// Reinstalling the iOS app with a new build on 2026-10-05 came back with an
+// empty server URL and token. On Safari the settings are therefore mirrored
+// into the app extension's own UserDefaults (SafariWebExtensionHandler.swift),
+// which survive app updates, and restored from there whenever storage.local
+// has no token. Chromium and Firefox builds have no nativeMessaging permission
+// (build.sh strips it), so sendNativeMessage is absent and all of this is a no-op.
+const BACKUP_KEYS = ['serverUrl', 'token', 'deviceName', 'dwellSeconds', 'blocklist'];
+
+async function nativeCall(message) {
+  if (typeof api.runtime.sendNativeMessage !== 'function') return null;
+  try {
+    return await api.runtime.sendNativeMessage('net.phfactor.autodidact', message);
+  } catch {
+    return null;
+  }
+}
+
+async function backupSettings() {
+  const s = await api.storage.local.get(BACKUP_KEYS);
+  // Only a complete configuration is worth keeping; never overwrite a good backup with blanks.
+  if (!s.token || !s.serverUrl) return;
+  await nativeCall({ type: 'saveSettings', settings: s });
+}
+
+// Once per worker lifetime: restore from the backup if storage lost the token,
+// otherwise refresh the backup from storage.
+let backupSynced = null;
+function syncSettingsBackup() {
+  backupSynced ??= (async () => {
+    const { token } = await api.storage.local.get('token');
+    if (token) return backupSettings();
+    const saved = (await nativeCall({ type: 'loadSettings' }))?.settings;
+    if (!saved?.token || !saved?.serverUrl) return;
+    const restore = {};
+    for (const k of BACKUP_KEYS) if (saved[k] !== undefined && saved[k] !== null) restore[k] = saved[k];
+    await api.storage.local.set(restore);
+    console.info('autodidact: settings restored from the app backup');
+  })().catch(() => {});
+  return backupSynced;
 }
 
 function globToRegex(glob) {
@@ -234,6 +278,7 @@ async function testConnection() {
 // ---------- lifecycle ----------
 
 api.runtime.onInstalled.addListener(async () => {
+  await syncSettingsBackup(); // restore before defaults are filled in
   const current = await api.storage.local.get(null);
   const fill = {};
   for (const [k, v] of Object.entries(DEFAULTS)) if (!(k in current)) fill[k] = v;
@@ -246,4 +291,7 @@ api.runtime.onStartup?.addListener(() => {
   flush();
 });
 api.alarms.onAlarm.addListener((a) => { if (a.name === ALARM) flush(); });
-api.storage.onChanged.addListener(() => updateBadge());
+api.storage.onChanged.addListener((changes, area) => {
+  updateBadge();
+  if (area === 'local' && BACKUP_KEYS.some((k) => k in changes)) backupSettings();
+});
