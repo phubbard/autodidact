@@ -59,6 +59,8 @@
         <button type="button" class="chip on" data-source="">all</button>
         <button type="button" class="chip" data-source="web">browser</button>
         <button type="button" class="chip" data-source="rss">rss</button>
+        <button type="button" class="chip" data-source="news">news</button>
+        <button type="button" class="chip" data-source="shared">shared</button>
       </div>
     </div>
   </form>
@@ -104,9 +106,9 @@ function render(hits, append) {
       <div class="snip">${snip(h.snippet)}</div>
       <div class="foot">
         <span>${esc(h.domain)}</span>
-        ${h.source === 'rss' ? `<span>rss · ${esc(h.feed || '')}</span>` : ''}
+        ${h.source === 'rss' ? `<span>rss · ${esc(h.feed || '')}</span>` : h.source === 'news' ? '<span>apple news</span>' : h.source === 'shared' ? '<span>shared</span>' : ''}
         <span>${when}</span>
-        <span>${h.source === 'rss' ? `${h.visit_count} sync${h.visit_count === 1 ? '' : 's'}` : `${h.visit_count} visit${h.visit_count === 1 ? '' : 's'}, ${mins(h.total_dwell_s)}`}</span>
+        <span>${h.source === 'web' ? `${h.visit_count} visit${h.visit_count === 1 ? '' : 's'}, ${mins(h.total_dwell_s)}` : `${h.visit_count} ${h.source === 'rss' ? 'sync' : 'share'}${h.visit_count === 1 ? '' : 's'}`}</span>
         <a href="/page/${h.id}?format=html" target="_blank">stored text</a>
       </div>`;
     box.appendChild(el);

@@ -31,13 +31,11 @@ import argparse
 import html
 import json
 import os
-import re
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from html.parser import HTMLParser
 
 FRESHRSS_URL = os.environ.get("FRESHRSS_URL", "").rstrip("/")
 FRESHRSS_USER = os.environ.get("FRESHRSS_USER", "")
@@ -55,48 +53,8 @@ FULL_FETCH_BELOW = 700        # feed excerpts shorter than this trigger a full f
 STATE_MAX_IDS = 20_000
 UA = "Autodidact/0.1 (+https://github.com/phfactor/autodidact)"
 
-try:  # optional, much better article extraction for full fetches
-    import trafilatura  # type: ignore
-except ImportError:  # pragma: no cover
-    trafilatura = None
-
-
-# ---------- HTML → text ----------
-
-class _Text(HTMLParser):
-    SKIP = {"script", "style", "noscript", "template", "svg", "iframe"}
-    BLOCK = {"p", "div", "br", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote",
-             "pre", "tr", "section", "article", "figcaption", "hr", "dd", "dt", "table"}
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.parts, self._skip = [], 0
-
-    def handle_starttag(self, tag, attrs):
-        if tag in self.SKIP:
-            self._skip += 1
-        elif tag in self.BLOCK:
-            self.parts.append("\n")
-
-    def handle_endtag(self, tag):
-        if tag in self.SKIP and self._skip:
-            self._skip -= 1
-        elif tag in self.BLOCK:
-            self.parts.append("\n")
-
-    def handle_data(self, data):
-        if not self._skip:
-            self.parts.append(data)
-
-
-def html_to_text(fragment: str) -> str:
-    p = _Text()
-    p.feed(fragment or "")
-    text = "".join(p.parts)
-    text = re.sub(r"[ \t ]+", " ", text)
-    text = re.sub(r" *\n *", "\n", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+from extract import FetchError, html_to_text  # noqa: E402  (shared with /ingest-url)
+import extract
 
 
 # ---------- FreshRSS (Google Reader API) ----------
@@ -165,24 +123,11 @@ def item_html(item):
 # ---------- full-text fetch ----------
 
 def fetch_full_text(url):
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/html,*/*;q=0.5"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        ctype = r.headers.get("Content-Type", "")
-        if "html" not in ctype:
-            return ""
-        raw = r.read(2_000_000)
-    charset = "utf-8"
-    m = re.search(r"charset=([\w-]+)", ctype)
-    if m:
-        charset = m.group(1)
-    page = raw.decode(charset, errors="replace")
-    if trafilatura:
-        out = trafilatura.extract(page, url=url, include_comments=False, include_tables=True, favor_recall=True)
-        if out:
-            return out.strip()
-    # Fallback: main/article block if there is one, else nothing (body text is too noisy to trust).
-    m = re.search(r"<(article|main)\b.*?</\1>", page, re.S | re.I)
-    return html_to_text(m.group(0)) if m else ""
+    """Article text for *url* via extract.py (trafilatura if installed, else <article>/<main>)."""
+    try:
+        return extract.fetch_article(url)["text"]
+    except FetchError:
+        return ""
 
 
 # ---------- Autodidact ----------

@@ -22,12 +22,14 @@ from flask import Flask, abort, g, jsonify, render_template, request
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
+import extract
 
 MIN_TEXT_CHARS = 100
 MAX_TEXT_CHARS = 250_000
 DEFAULT_LIMIT = 25
 MAX_LIMIT = 200
-SOURCES = {"web", "rss"}
+SOURCES = {"web", "rss", "news", "shared"}   # news = Apple News via the share sheet, shared = any other shared URL
+MIN_URL_TEXT_CHARS = 200         # /ingest-url: below this the page is a shell (News+ exclusive, paywall, JS-only app)
 REQUEST_LOG_KEEP = 2000          # rows kept in the requests table for /debug
 REQUEST_LOG_SKIP = ("/debug",)   # the debug page polling itself is not interesting
 
@@ -115,16 +117,14 @@ def create_app(db_path=None, token=None):
 
     # ---------- ingest ----------
 
-    @app.post("/ingest")
-    @require_token
-    def ingest():
-        body = request.get_json(silent=True) or {}
+    def _store_page(body: dict, source: str, min_chars: int):
+        """Shared by /ingest and /ingest-url. Validates, dedups, records a visit; returns the JSON reply."""
         url = (body.get("url") or "").strip()
         text = (body.get("text") or "").strip()
         if not url.startswith(("http://", "https://")):
             abort(400, "url must be http(s)")
-        if len(text) < MIN_TEXT_CHARS:
-            abort(400, f"text shorter than {MIN_TEXT_CHARS} chars")
+        if len(text) < min_chars:
+            abort(400, f"text shorter than {min_chars} chars")
         text = text[:MAX_TEXT_CHARS]
 
         canonical = (body.get("canonical_url") or "").strip()
@@ -138,9 +138,6 @@ def create_app(db_path=None, token=None):
         dwell = max(0, int(body.get("dwell_s") or 0))
         visit_id = (body.get("visit_id") or "").strip() or None
         browser = _browser_name(body.get("browser") or "")
-        source = (body.get("source") or "web").strip().lower()
-        if source not in SOURCES:
-            abort(400, f"source must be one of {sorted(SOURCES)}")
         feed = (body.get("feed") or "").strip()[:200] or None
         published_at = int(body["published_at"]) if body.get("published_at") else None
 
@@ -173,7 +170,71 @@ def create_app(db_path=None, token=None):
         conn.commit()
         g.req_note = f"{source} {db.domain_of(norm)}: " + (
             "new page" if created else "new visit" if new_visit else "already stored")
-        return jsonify({"id": page_id, "created": created, "new_visit": new_visit})
+        return {"id": page_id, "created": created, "new_visit": new_visit, "url": norm,
+                "title": (body.get("title") or "")[:500]}
+
+    @app.post("/ingest")
+    @require_token
+    def ingest():
+        body = request.get_json(silent=True) or {}
+        source = (body.get("source") or "web").strip().lower()
+        if source not in SOURCES:
+            abort(400, f"source must be one of {sorted(SOURCES)}")
+        res = _store_page(body, source, MIN_TEXT_CHARS)
+        return jsonify({"id": res["id"], "created": res["created"], "new_visit": res["new_visit"]})
+
+    @app.post("/ingest-url")
+    @require_token
+    def ingest_url():
+        """Share-sheet entry point: the server fetches and extracts the page itself.
+
+        Body: {"url": …, "title"?: …, "note"?: …, "source"?: "news"|"shared", "client"?: "iPhone"}.
+        Apple News links are unwrapped to the publisher's URL when the story has one; a
+        News+ exclusive is stored with the landing page's title/description and the apple.news link.
+        """
+        body = request.get_json(silent=True) or {}
+        url = (body.get("url") or "").strip()
+        if not url.startswith(("http://", "https://")):
+            abort(400, "url must be http(s)")
+        source = (body.get("source") or "").strip().lower()
+        if not source:
+            source = "news" if extract.is_apple_news(url) else "shared"
+        if source not in SOURCES:
+            abort(400, f"source must be one of {sorted(SOURCES)}")
+
+        try:
+            art = extract.fetch_article(url)
+        except extract.FetchError as e:
+            abort(502, str(e))
+
+        title = (body.get("title") or "").strip() or art["title"] or art["url"]
+        note = (body.get("note") or "").strip()
+        text = art["text"]
+        if len(text) < MIN_URL_TEXT_CHARS:
+            # Nothing much extractable (News+ exclusive, paywall shell, JS-only page): keep what we know
+            # so the story is still findable by title, and say so in the stored text.
+            text = "\n".join(p for p in (title, art["description"], text,
+                                         f"No article text could be fetched from {art['url']}") if p)
+        if note:
+            text = note + "\n\n" + text
+        description = art["description"]
+        if source == "news":
+            description = ("apple news · " + description).strip(" ·")
+
+        res = _store_page({
+            "url": art["url"],
+            "canonical_url": art["canonical"],
+            "title": title,
+            "description": description,
+            "text": text,
+            "lang": art["lang"],
+            "visit_id": (body.get("visit_id") or "").strip() or None,
+            "browser": (body.get("client") or "Shortcut")[:40],
+        }, source, 1)
+        res["via"] = art["via"] or (url if extract.is_apple_news(url) else "")
+        res["chars"] = len(text)
+        res["source"] = source
+        return jsonify(res)
 
     @app.post("/dwell")
     @require_token

@@ -18,6 +18,7 @@ autodidact/
 │   ├── app.py          Flask: /ingest, /dwell, /search, /page, /stats, UI at /
 │   ├── db.py           schema (pages, visits, embeddings, FTS5), URL normalisation
 │   ├── freshrss_sync.py  second source: read/starred FreshRSS items via its Google Reader API
+│   ├── extract.py      fetch + text extraction shared by freshrss_sync.py and POST /ingest-url
 │   ├── embed.py        milestone-2 enrichment job (summaries, tags, embeddings via LM Studio)
 │   └── tests/          pytest
 ├── safari/Autodidact/  Xcode project wrapping extension/src for Safari on macOS and iOS
@@ -66,7 +67,8 @@ Two things the script cannot do for you: create the DNS record for
 `autodidact.<domain>` pointing at the Pi, and enable API access in FreshRSS.
 
 Endpoints: `POST /ingest` and `POST /dwell` (bearer token) take what the
-extension sends; `GET /search?q=&after=&before=&domain=&limit=&offset=` returns
+extension sends; `POST /ingest-url` (bearer token) takes a bare URL from the
+share-sheet Shortcut and fetches it server-side; `GET /search?q=&after=&before=&domain=&limit=&offset=` returns
 JSON hits with highlighted snippets, or the most recent pages when `q` is
 empty; `GET /page/<id>` returns the stored text (JSON, or HTML with
 `?format=html`); `DELETE /page/<id>` and `DELETE /domain/<d>` (bearer token)
@@ -202,6 +204,24 @@ Caveat: FreshRSS cannot distinguish an article you opened from one swept
 away by "mark all as read". `--mode starred` limits ingest to what you
 deliberately kept; the default `--mode both` trusts read state. Try both and
 see which corpus searches better.
+
+## Third source: the share sheet (Apple News and anything else)
+
+Apple News has no API for your saved or read stories, so the way in is the
+Share button. `POST /ingest-url` takes a URL, fetches it on the server,
+extracts the text (`server/extract.py`: trafilatura if installed, otherwise
+the page's `<article>`/`<main>` block), unwraps `apple.news` links to the
+publisher's page when the story has one, and stores the result with
+`source: "news"` (Apple News) or `"shared"` (everything else). A News+
+exclusive has no web version; it is stored with its title, blurb and the
+apple.news link so it is still findable. The same dedup applies, so a story
+shared from News that you also read in the browser is one page, two visits.
+
+`docs/SHORTCUT.md` is the three-minute recipe for the **Send to Autodidact**
+Shortcut that puts this in the share sheet on iPhone, iPad and Mac. Two
+caveats: the server fetches without cookies, so paywalled publishers yield
+their public teaser rather than what you read inside News+; and saving a
+story in News does not trigger anything, so it is save-then-share.
 
 ## Milestone 2 (optional now)
 

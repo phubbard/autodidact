@@ -10,6 +10,7 @@ Owner: Paul Hubbard (pfh@phfactor.net). GitHub: `phubbard/autodidact`. This chec
 - **Extension builds** are in `extension/dist/{chromium,firefox}` (gitignored; regenerate with `extension/build.sh`, which wipes and recreates `dist/`, the folder unpacked installs load from). Loaded and confirmed posting on the MacBook Air: Brave (unpacked), Zen (Firefox build; whether as a temporary add-on or the unsigned `.xpi` was not recorded — a temporary one disappears when Zen restarts).
 - **Safari, macOS and iOS**: one combined Xcode project in `safari/Autodidact/` (see "Safari" below). Enabled in Safari on the MacBook Air and installed on Paul's iPhone 16 Pro. Both capture normally since the storage-quota fix of 2026-10-01 (see the gotcha below).
 - **FreshRSS sync is enabled** (2026-10-01): `FRESHRSS_URL=http://127.0.0.1:8090` (the `freshrss` container's published port on the Pi, bypassing DNS and Caddy; `https://news.phfactor.net` also works), user `pfh`, hourly at :17, default `--mode both --days 7`. First run imported about a week of read items (~1,100). Paul had starred nothing in that week, so `--mode starred` would currently be an empty corpus.
+- **Share-sheet source** (2026-10-05): `POST /ingest-url` + `server/extract.py` + the Shortcut recipe in `docs/SHORTCUT.md`. Written and tested against a local fixture site (46 tests); **not yet exercised against a real `apple.news` link** — that is the first thing to do after deploying (`curl` recipe in SHORTCUT.md). Paul has not built the Shortcut yet.
 - **Enrichment** (`embed.py`) has never run against a real model.
 
 ## Layout
@@ -26,9 +27,10 @@ extension/test/e2e.mjs  Playwright headless-Chromium end-to-end test (needs a ru
 server/app.py         Flask app factory create_app(db_path, token); all HTTP routes + search UI
 server/db.py          schema (pages, visits, embeddings, pages_fts), MIGRATIONS, normalize_url
 server/freshrss_sync.py  Google Reader API client → POST /ingest with source=rss
+server/extract.py     fetch(), extract() (trafilatura or stdlib fallback), unwrap_apple_news(), fetch_article(); shared by freshrss_sync.py and /ingest-url
 server/embed.py       M2 enrichment job: summary + tags + embeddings via OpenAI-compatible endpoint
 server/templates/     index.html (search UI), page.html (stored text view), debug.html (recent requests)
-server/tests/         pytest: test_app.py (Flask client), test_freshrss.py (fake GReader + live server)
+server/tests/         pytest: test_app.py (Flask client), test_freshrss.py (fake GReader + live server), test_ingest_url.py (fixture site: article, redirect, apple.news-style landing pages)
 deploy/install.sh     idempotent Pi installer/updater: clone/pull, venv, env+token, systemd, Caddy conf.d, cron
 safari/Autodidact/    Xcode project from safari-web-extension-converter: iOS + macOS app and extension targets
 .github/workflows/ci.yml  pytest + node --check + build.sh; uploads extension zips
@@ -39,7 +41,7 @@ safari/Autodidact/    Xcode project from safari-web-extension-converter: iOS + m
 ```sh
 # Server (from repo root; CI does exactly this)
 python3 -m venv server/venv && server/venv/bin/pip install -r server/requirements.txt
-server/venv/bin/python -m pytest -q server/tests            # 23 tests, all should pass
+server/venv/bin/python -m pytest -q server/tests            # 46 tests, all should pass (with or without trafilatura)
 AUTODIDACT_DB=./autodidact.db AUTODIDACT_TOKEN=dev server/venv/bin/python server/app.py
 #   → http://127.0.0.1:8765  (UI at /, JSON at /search?q=…)
 
@@ -139,13 +141,14 @@ Two sources feed one server. The extension is deliberately dumb: it knows the bl
 
 ## Conventions and rules
 
-- **Python**: stdlib + Flask only on the server hot path. `trafilatura` is optional (import guarded) and only used by `freshrss_sync.py`. Don't add numpy to `app.py` until M2 semantic search actually needs it. Type hints where they help; no type checker is configured.
+- **Python**: stdlib + Flask only on the server hot path. `trafilatura` is optional (import guarded, in `extract.py` only); every test must pass both with and without it installed. Don't add numpy to `app.py` until M2 semantic search actually needs it. Type hints where they help; no type checker is configured.
 - **JavaScript**: plain ES2020+, no build, no modules in content/background scripts (they run as classic scripts). `const api = globalThis.browser ?? globalThis.chrome;` is the whole cross-browser shim — keep it that way. Anything that differs between Chromium and Firefox goes in `build.sh`'s jq patch, not in code paths. Safari gets the Chromium manifest unchanged.
 - **Schema changes**: add the column to `SCHEMA` *and* append a tuple to `MIGRATIONS` in `db.py`. `connect()` applies migrations before running the idempotent schema. Add a migration test like `test_migration_adds_columns`. Never rewrite existing rows' hashes. The production DB now exists; migrations must be safe on a live file.
 - **FTS**: user input goes through `fts_query()` which quotes every term so FTS5 operators can't break or inject. Keep that; do not concatenate raw user text into a MATCH clause.
 - **Dedup and normalization** live only in `db.normalize_url` and the `/ingest` handler. If you change what counts as "the same URL", existing rows won't retroactively merge — say so in STATUS.md.
-- **Auth**: `/ingest`, `/dwell`, and both `DELETE` routes require `Authorization: Bearer <token>`. Read routes (`/`, `/search`, `/page`, `/stats`) are unauthenticated by design because Caddy restricts to LAN + Tailscale. Don't add a login page.
-- **Privacy is edge-enforced.** Blocklist, dwell gate, min-text, incognito guard and pause all happen in the browser before anything is sent. Don't move filtering server-side, and don't log page text on the server.
+- **Auth**: `/ingest`, `/ingest-url`, `/dwell`, and both `DELETE` routes require `Authorization: Bearer <token>`. Read routes (`/`, `/search`, `/page`, `/stats`) are unauthenticated by design because Caddy restricts to LAN + Tailscale. Don't add a login page.
+- **Privacy is edge-enforced.** Blocklist, dwell gate, min-text, incognito guard and pause all happen in the browser before anything is sent. Don't move filtering server-side, and don't log page text on the server. `/ingest-url` is the one route where the server fetches a URL itself; it is bearer-protected and LAN-only, fetches http(s) only, one forwarding hop, 2 MB cap, no cookies. Don't widen it into a general proxy.
+- **Sources** are the closed set `SOURCES = {web, rss, news, shared}` in `app.py`; adding one means a UI chip in `index.html` and a note in STATUS.md.
 - **Deploy changes** go in `deploy/install.sh` and nowhere else; it must stay idempotent (two consecutive runs converge, verified with `DRY_RUN=1` against stubbed `systemctl`/`caddy`). Never hand-edit files under `/srv/autodidact/src` on the Pi — they are a git checkout the installer fast-forwards.
 - **Tests**: every server change gets a pytest; `server/tests/test_app.py` uses `create_app(tmp_db, token)` with Flask's test client. Extension changes: at minimum `node --check`; behavior changes should be exercised by `e2e.mjs`. Run the full pytest suite before committing.
 - **Commits**: small, imperative subject lines, matching the existing history ("Add FreshRSS as a second source"). Commit freely on `main`. Pushing is fine from Claude Code on the Mac if `git push` works with Paul's keys; Cowork sessions cannot push.
@@ -169,6 +172,8 @@ Two sources feed one server. The extension is deliberately dumb: it knows the bl
 - FreshRSS "read time" is really "sync time" — accurate to an hour for recent items, to a day for backfill.
 - `pages_fts` is an external-content FTS table. If you ever bulk-edit `pages` outside the triggers (e.g. raw `UPDATE` in a migration on `text`), run `INSERT INTO pages_fts(pages_fts) VALUES('rebuild')`.
 - `e2e.mjs` binds a fixture site on port 8091 and expects the server on 8765 with token `e2e-token`; it resolves `../dist/chromium` relative to itself, so run `build.sh` first. On a machine without Playwright's bundled Chromium, set `executablePath` in the launch options.
+- `apple.news/A…` links are landing pages that forward non-Apple clients to the publisher with a meta refresh or `location.replace`. `extract.fetch_article` follows exactly one such hop (on apple.news hosts, or on any page with a meta refresh). News+ exclusives have no target; `/ingest-url` then stores title + description + the link with a "No article text could be fetched" line, so the story is still findable. If Apple changes the landing page, `unwrap_apple_news()` is the only place to touch.
+- Without trafilatura the fallback extractor returns the body minus nav/header/footer/aside/form, which for a landing page is a few words; `MIN_URL_TEXT_CHARS = 200` is what decides a page is a shell. Keep the tests passing both ways.
 - The UCG-Max answers a local CNAME with just the CNAME (no A); the Pi-hole chases it. If local-name resolution ever misbehaves again, an A record for `autodidact.phfactor.net → 204.128.136.3` on the UCG removes the chase.
 
 ## What not to do
@@ -182,7 +187,7 @@ Two sources feed one server. The extension is deliberately dumb: it knows the bl
 
 ## Decisions waiting on Paul
 
-License (none in repo); dwell threshold (tune after data); embedding model on LM Studio; FreshRSS mode (both vs starred, after data); browser-history backfill (`places.sqlite`, Chrome `History` — cheap head start, thin data); whether to rotate the token that appeared in a chat transcript.
+License (none in repo); whether the Apple News Shortcut should ask for a note on every share (one more tap, but it is how a story gets tagged with the word Paul will remember); whether to look into News.app's local container (`~/Library/Containers/com.apple.news/`) for an automatic saved-stories sync — unsupported, needs Full Disk Access, schema undocumented; dwell threshold (tune after data); embedding model on LM Studio; FreshRSS mode (both vs starred, after data); browser-history backfill (`places.sqlite`, Chrome `History` — cheap head start, thin data); whether to rotate the token that appeared in a chat transcript.
 
 ## Working with Paul
 
