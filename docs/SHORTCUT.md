@@ -60,4 +60,4 @@ Away from home it works over Tailscale (the Caddy rule admits `100.64.0.0/10`); 
 
 - The server fetches as `Autodidact/0.1` with no cookies, so **paywalled publishers return the teaser**. What you read inside Apple News+ is not retrievable; what is stored is whatever the publisher's public page shows.
 - `apple.news` links forward non-Apple clients to the publisher via a meta-refresh or script redirect. The server follows one hop. If Apple changes that page format, stories start landing as "No article text could be fetched" with the apple.news link; `extract.unwrap_apple_news()` is the one function to update.
-- Dedup is by normalised URL and text: a story you also read in the browser extension or via FreshRSS becomes one page with an extra visit, not a duplicate.
+- Dedup is by normalised URL *and* text. The server's extraction rarely matches a feed excerpt or the browser extension's text exactly, so sharing a story you also got via FreshRSS or the extension usually adds a second row for the same URL (with the fuller text) rather than a visit on the first. Search shows both. Sharing the same link twice does dedup.
