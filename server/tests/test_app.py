@@ -88,6 +88,19 @@ def test_changed_content_is_new_row(client):
     assert r2.json["created"] and r2.json["id"] != r1.json["id"]
 
 
+def test_changed_content_same_visit_id(client):
+    # An open tab whose text changes is re-sent with the same visit_id. That used to fail with
+    # "NOT NULL constraint failed: pages.last_seen" (500), and the extension retried it forever.
+    r1 = client.post("/ingest", json=capture("https://example.com/live", visit_id="v-live"), headers=HEADERS)
+    r2 = client.post("/ingest", json=capture("https://example.com/live", text=LOREM + " Live update.", visit_id="v-live"),
+                     headers=HEADERS)
+    assert r2.status_code == 200 and r2.json["created"] and r2.json["id"] != r1.json["id"]
+    assert client.post("/dwell", json={"visit_id": "v-live", "dwell_s": 40}, headers=HEADERS).status_code == 200
+    ids = {h["id"] for h in client.get("/search?q=live update").json["results"]}
+    assert r2.json["id"] in ids
+    assert client.get(f"/page/{r2.json['id']}").json["last_seen"] > 0
+
+
 def test_canonical_url_same_domain_only(client):
     r = client.post("/ingest", json=capture("https://example.com/p?x=1", canonical_url="https://example.com/p"),
                     headers=HEADERS)

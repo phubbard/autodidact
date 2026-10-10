@@ -441,7 +441,10 @@ def _refresh_page_stats(conn, page_id):
         """UPDATE pages SET
              visit_count   = (SELECT COUNT(*) FROM visits WHERE page_id = ?),
              total_dwell_s = (SELECT COALESCE(SUM(dwell_s), 0) FROM visits WHERE page_id = ?),
-             last_seen     = (SELECT MAX(seen_at) FROM visits WHERE page_id = ?)
+             -- A page can have no visits: when an open tab's text changes, the extension re-sends it
+             -- under the same visit_id, the new text becomes a new pages row, and the visit stays with
+             -- the first version. MAX() is then NULL; keep the row's own timestamp instead.
+             last_seen     = COALESCE((SELECT MAX(seen_at) FROM visits WHERE page_id = ?), last_seen)
            WHERE id = ?""",
         (page_id, page_id, page_id, page_id),
     )
