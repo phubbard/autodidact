@@ -2,7 +2,15 @@
 
 A Shortcut that appears in the share sheet on iPhone, iPad and Mac and POSTs the shared link to `POST /ingest-url`. The server fetches the page, extracts the text and stores it like any other capture. This is the path for anything that is not a browser tab you dwelled on: **Apple News stories** (saved or otherwise), links from Mail and Messages, Reader-mode pages on the phone, and anything else with a Share button.
 
-Build it once in the Shortcuts app and it syncs to all devices via iCloud. There is no `.shortcut` file in the repo because exported shortcuts are signed and tied to the exporting account; the recipe below takes about three minutes.
+Build it once and it syncs to all devices via iCloud. There is no `.shortcut` file in the repo because signed shortcuts are tied to the account that signed them, but `docs/make_shortcut.py` generates one on a Mac:
+
+```sh
+python3 docs/make_shortcut.py
+shortcuts sign --mode anyone --input "Send to Autodidact (unsigned).shortcut" --output "Send to Autodidact.shortcut"
+open "Send to Autodidact.shortcut"      # Shortcuts → Add Shortcut
+```
+
+The token is not embedded: after importing, expand "Get contents of" and paste it over `PASTE-TOKEN-HERE` in the Authorization header. The manual recipe below builds the same thing by hand.
 
 ## The endpoint
 
