@@ -128,7 +128,9 @@ def test_fetch_rejects_non_html(site):
 # ---------- /ingest-url ----------
 
 def test_ingest_url_requires_token(client, site):
-    assert client.post("/ingest-url", json={"url": site + "/wal"}).status_code == 401
+    r = client.post("/ingest-url", json={"url": site + "/wal"})
+    assert r.status_code == 401 and r.json == {"ok": False, "error": "wrong or missing token",
+                                                "message": "Not saved: wrong or missing token"}
 
 
 def test_ingest_url_fetches_and_stores(client, site):
@@ -136,6 +138,9 @@ def test_ingest_url_fetches_and_stores(client, site):
     assert r.status_code == 200, r.data
     j = r.json
     assert j["created"] and j["source"] == "shared" and j["chars"] > 300
+    assert j["ok"] and j["message"] == "Saved: WAL tuning on a Raspberry Pi"
+    again = client.post("/ingest-url", json={"url": site + "/wal"}, headers=HEADERS).json
+    assert again["message"] == "Already saved: WAL tuning on a Raspberry Pi"
     assert j["title"] == "WAL tuning on a Raspberry Pi"
     assert j["url"] == f"{site}/wal"          # canonical's ?ref= is stripped by normalisation
     page = client.get(f"/page/{j['id']}").json
@@ -187,13 +192,15 @@ def test_ingest_url_news_plus_exclusive_keeps_title(client, site):
     assert page["title"] == "Inside the Watch Workshop — Hodinkee"
     assert page["description"].startswith("apple news · ")
     assert "No article text could be fetched" in page["text"]
+    assert r.json["message"].endswith("(title and link only; no article text)")
     assert client.get("/search?q=watch workshop").json["results"]
     assert client.get("/search?q=apple news").json["results"]
 
 
 def test_ingest_url_errors(client, site):
     assert client.post("/ingest-url", json={"url": "notaurl"}, headers=HEADERS).status_code == 400
-    assert client.post("/ingest-url", json={"url": site + "/file.pdf"}, headers=HEADERS).status_code == 502
+    r = client.post("/ingest-url", json={"url": site + "/file.pdf"}, headers=HEADERS)
+    assert r.status_code == 502 and r.json["message"].startswith("Not saved: not an HTML page")
     assert client.post("/ingest-url", json={"url": site + "/boom"}, headers=HEADERS).status_code == 502
     assert client.post("/ingest-url", json={"url": site + "/wal", "source": "bogus"}, headers=HEADERS).status_code == 400
     assert client.get("/stats").json["pages"] == 0
@@ -201,6 +208,17 @@ def test_ingest_url_errors(client, site):
 
 def test_ingest_url_reports_what_it_got(client):
     r = client.post("/ingest-url", json={"url": "", "client": "iPhone"}, headers=HEADERS)
-    assert r.status_code == 400 and b"got nothing (keys: client, url)" in r.data
+    assert r.status_code == 400 and "got nothing (keys: client, url)" in r.json["message"]
     r = client.post("/ingest-url", json={"url": "not a url"}, headers=HEADERS)
-    assert r.status_code == 400 and b"got &#39;not a url&#39;" in r.data
+    assert r.status_code == 400 and "got 'not a url'" in r.json["error"]
+
+
+def test_ingest_url_unexpected_error_is_json(client, site, monkeypatch):
+    def boom(url, timeout=20):
+        raise RuntimeError("kaboom")
+    monkeypatch.setattr(extract, "fetch_article", boom)
+    r = client.post("/ingest-url", json={"url": site + "/wal"}, headers=HEADERS)
+    assert r.status_code == 500 and r.json["message"].startswith("Not saved: server error (RuntimeError)")
+    # Other routes keep the default error pages.
+    assert client.post("/ingest", json={}, headers=HEADERS).status_code == 400
+    assert not client.post("/ingest", json={}, headers=HEADERS).is_json

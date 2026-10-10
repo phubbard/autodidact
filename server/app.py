@@ -19,6 +19,7 @@ from functools import wraps
 from urllib.parse import unquote
 
 from flask import Flask, abort, g, jsonify, render_template, request
+from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
@@ -102,6 +103,27 @@ def create_app(db_path=None, token=None):
     @app.route("/", methods=["OPTIONS"])
     def preflight(_any=None):
         return "", 204
+
+    # /ingest-url is called by a Shortcut that can only show what it gets back, so every outcome
+    # there, failures included, is JSON with a ready-to-show "message". Other routes keep Flask's
+    # default error pages.
+    def _ingest_url_error(code, reason):
+        g.req_note = reason
+        return jsonify({"ok": False, "error": reason, "message": f"Not saved: {reason}"}), code
+
+    @app.errorhandler(HTTPException)
+    def http_error(e):
+        if request.path != "/ingest-url":
+            return e
+        reason = "wrong or missing token" if e.code == 401 else (e.description or e.name)
+        return _ingest_url_error(e.code, reason)
+
+    @app.errorhandler(Exception)
+    def unexpected_error(e):
+        if request.path != "/ingest-url":
+            raise e
+        app.logger.exception("ingest-url failed")
+        return _ingest_url_error(500, f"server error ({type(e).__name__}); see journalctl -u autodidact")
 
     def require_token(f):
         @wraps(f)
@@ -215,7 +237,8 @@ def create_app(db_path=None, token=None):
         title = (body.get("title") or "").strip() or art["title"] or art["url"]
         note = (body.get("note") or "").strip()
         text = art["text"]
-        if len(text) < MIN_URL_TEXT_CHARS:
+        shell = len(text) < MIN_URL_TEXT_CHARS
+        if shell:
             # Nothing much extractable (News+ exclusive, paywall shell, JS-only page): keep what we know
             # so the story is still findable by title, and say so in the stored text.
             text = "\n".join(p for p in (title, art["description"], text,
@@ -239,6 +262,9 @@ def create_app(db_path=None, token=None):
         res["via"] = art["via"] or (url if extract.is_apple_news(url) else "")
         res["chars"] = len(text)
         res["source"] = source
+        res["ok"] = True
+        verb = "Saved" if res["created"] else "Already saved"
+        res["message"] = f"{verb}: {title}" + (" (title and link only; no article text)" if shell else "")
         return jsonify(res)
 
     @app.post("/dwell")

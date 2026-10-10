@@ -16,7 +16,7 @@ Content-Type: application/json
 
 Optional fields: `title` (overrides the page's), `note` (prepended to the stored text, so a word you add is searchable later), `source` (`news` or `shared`; defaults to `news` for `apple.news` links and `shared` otherwise).
 
-Reply: `{"id", "created", "new_visit", "url", "title", "source", "via", "chars"}`. `url` is where the story was actually fetched from (the publisher, after unwrapping an Apple News link), `via` is the apple.news link when one was unwrapped, `chars` is how much text was stored. Errors: `400` bad URL or source, `502` the page could not be fetched or was not HTML (a PDF, say), `401` wrong token.
+Reply: `{"ok", "message", "id", "created", "new_visit", "url", "title", "source", "via", "chars"}`. `message` is ready to show ("Saved: <title>", "Already saved: <title>", or with "(title and link only; no article text)" for a News+ exclusive). Every failure is JSON too, `{"ok": false, "error", "message": "Not saved: <reason>"}`, including a wrong token and unexpected server errors, so the Shortcut only ever displays `message`. `url` is where the story was actually fetched from (the publisher, after unwrapping an Apple News link), `via` is the apple.news link when one was unwrapped, `chars` is how much text was stored. Errors: `400` bad URL or source, `502` the page could not be fetched or was not HTML (a PDF, say), `401` wrong token.
 
 Quick check from a terminal before building the shortcut:
 
@@ -42,8 +42,8 @@ Actions, in order:
    - Request Body: `JSON`
      - `url` → the **URLs** variable from step 2 (if it is a list, Shortcuts sends the first; wrap steps 4–5 in **Repeat with Each** over URLs if you want every link from a text selection)
      - `client` → the **Device Name** variable from step 3
-5. **Get Dictionary Value** `title` **in** `Contents of URL`.
-6. **Show Notification**: `Saved: ` + the Dictionary Value, with "Play Sound" off.
+5. **Get Dictionary Value** `message` **in** `Contents of URL`.
+6. **Show Notification**: the Dictionary Value, with "Play Sound" off. Errors arrive as "Not saved: <reason>".
 
 Optionally insert an **Ask for Input** (Text, prompt "Note?", default empty) before step 4 and send it as `note`; that is how you tag a story with the word you'll remember it by. It costs a tap per share, so most people leave it out and rely on the title and text.
 
