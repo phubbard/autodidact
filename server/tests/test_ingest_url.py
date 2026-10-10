@@ -197,3 +197,10 @@ def test_ingest_url_errors(client, site):
     assert client.post("/ingest-url", json={"url": site + "/boom"}, headers=HEADERS).status_code == 502
     assert client.post("/ingest-url", json={"url": site + "/wal", "source": "bogus"}, headers=HEADERS).status_code == 400
     assert client.get("/stats").json["pages"] == 0
+
+
+def test_ingest_url_reports_what_it_got(client):
+    r = client.post("/ingest-url", json={"url": "", "client": "iPhone"}, headers=HEADERS)
+    assert r.status_code == 400 and b"got nothing (keys: client, url)" in r.data
+    r = client.post("/ingest-url", json={"url": "not a url"}, headers=HEADERS)
+    assert r.status_code == 400 and b"got &#39;not a url&#39;" in r.data

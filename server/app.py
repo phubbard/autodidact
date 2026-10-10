@@ -193,9 +193,14 @@ def create_app(db_path=None, token=None):
         News+ exclusive is stored with the landing page's title/description and the apple.news link.
         """
         body = request.get_json(silent=True) or {}
-        url = (body.get("url") or "").strip()
+        raw = body.get("url")
+        if isinstance(raw, list):  # a Shortcuts list variable arrives as a JSON array
+            raw = next((x for x in raw if isinstance(x, str) and x.strip()), "")
+        url = raw.strip() if isinstance(raw, str) else ""
         if not url.startswith(("http://", "https://")):
-            abort(400, "url must be http(s)")
+            # Say what arrived: a Shortcut wired to the wrong variable is otherwise hard to diagnose.
+            got = "nothing" if raw in (None, "", []) else repr(raw)[:120]
+            abort(400, f"url must be http(s); got {got} (keys: {', '.join(sorted(body)) or 'none'})")
         source = (body.get("source") or "").strip().lower()
         if not source:
             source = "news" if extract.is_apple_news(url) else "shared"
