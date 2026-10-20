@@ -72,7 +72,9 @@ share-sheet Shortcut and fetches it server-side; `GET /search?q=&after=&before=&
 JSON hits with highlighted snippets, or the most recent pages when `q` is
 empty; `GET /page/<id>` returns the stored text (JSON, or HTML with
 `?format=html`); `DELETE /page/<id>` and `DELETE /domain/<d>` (bearer token)
-remove mistakes; `GET /stats` for counts. `GET /debug` is a page listing the
+remove mistakes; `GET /stats` for counts (including `dead_letters`, requests the server failed
+on and is holding for replay: `GET /debug/dlq` lists them, `POST /dlq/replay` with the token re-sends
+them once the bug is fixed, `DELETE /dlq/<id>` discards one). `GET /debug` is a page listing the
 most recent requests (time, path, status, client IP and reverse-DNS name,
 browser, OS, and for ingests whether the page was new); its data is at
 `GET /debug/requests?limit=50&quiet=1`. The server keeps the last 2,000

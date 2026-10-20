@@ -14,6 +14,7 @@ import re
 import socket
 import threading
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from urllib.parse import unquote
@@ -34,6 +35,8 @@ SOURCES = {"web", "rss", "news", "shared"}   # news = Apple News via the share s
 MIN_URL_TEXT_CHARS = 200         # /ingest-url: below this the page is a shell (News+ exclusive, paywall, JS-only app)
 REQUEST_LOG_KEEP = 2000          # rows kept in the requests table for /debug
 REQUEST_LOG_SKIP = ("/debug",)   # the debug page polling itself is not interesting
+DLQ_PATHS = {"/ingest", "/ingest-url", "/dwell"}   # unexpected errors here are dead-lettered, not 500s
+REPLAY_HEADER = "X-Autodidact-Replay"              # marks a request re-sent from the dead-letter queue
 
 
 def create_app(db_path=None, token=None, policy_path=None):
@@ -80,6 +83,10 @@ def create_app(db_path=None, token=None, policy_path=None):
                 m = re.search(r"<p>(.*?)</p>", resp.get_data(as_text=True), re.S)
                 note = html.unescape(m.group(1)).strip().split(". ")[0] if m else None
             conn = get_db()
+            if resp.status_code >= 500:
+                # The request failed part-way; committing the log entry below must not also commit
+                # whatever it had half-written.
+                conn.rollback()
             cur = conn.execute(
                 "INSERT INTO requests (ts, method, path, query, status, ms, ip, ua, device, note)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -125,10 +132,43 @@ def create_app(db_path=None, token=None, policy_path=None):
 
     @app.errorhandler(Exception)
     def unexpected_error(e):
-        if request.path != "/ingest-url":
+        if request.path not in DLQ_PATHS or request.method != "POST":
             raise e
-        app.logger.exception("ingest-url failed")
-        return _ingest_url_error(500, f"server error ({type(e).__name__}); see journalctl -u autodidact")
+        app.logger.exception("%s failed", request.path)
+        error = f"{type(e).__name__}: {e}"[:500]
+        if request.headers.get(REPLAY_HEADER):
+            # A replay that failed again: report it, don't queue a second copy.
+            g.req_note = f"replay failed: {error}"[:200]
+            return jsonify({"ok": False, "error": error}), 500
+        try:
+            dl_id = _dead_letter(error, traceback.format_exc())
+        except Exception:  # noqa: BLE001 — the DB itself is unhappy; let the client retry later
+            app.logger.exception("could not write dead letter")
+            if request.path == "/ingest-url":
+                return _ingest_url_error(503, f"server error ({type(e).__name__}), and it could not be queued")
+            return jsonify({"ok": False, "error": error}), 503
+        g.req_note = f"dead-lettered #{dl_id}: {error}"[:200]
+        # 202: accepted for later processing. The extension treats any 2xx as delivered and moves on.
+        reply = {"ok": False, "dead_lettered": dl_id, "error": error}
+        if request.path == "/ingest-url":
+            reply["message"] = f"Not saved yet: server error ({type(e).__name__}); kept for retry as #{dl_id}"
+        return jsonify(reply), 202
+
+    def _dead_letter(error, tb):
+        conn = get_db()
+        conn.rollback()  # drop whatever the failed request half-wrote
+        body = request.get_data(cache=True)
+        parsed = request.get_json(silent=True)
+        url = (parsed.get("url") if isinstance(parsed, dict) else None) or None
+        cur = conn.execute(
+            "INSERT INTO dead_letters (ts, path, content_type, body, error, traceback, url, ip, ua, device)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (time.time(), request.path, request.content_type, body, error, tb,
+             str(url)[:2000] if url else None, request.remote_addr,
+             (request.headers.get("User-Agent") or "")[:300] or None,
+             unquote(request.headers.get("X-Autodidact-Device") or "").strip()[:64] or None))
+        conn.commit()
+        return cur.lastrowid
 
     def require_token(f):
         @wraps(f)
@@ -399,8 +439,85 @@ def create_app(db_path=None, token=None, policy_path=None):
                      conn.execute("SELECT source, COUNT(*) AS n FROM pages GROUP BY source")}
         newest = conn.execute("SELECT MAX(last_seen) FROM pages").fetchone()[0]
         size = os.path.getsize(app.config["DB_PATH"]) if os.path.exists(app.config["DB_PATH"]) else 0
+        dead = conn.execute("SELECT COUNT(*) FROM dead_letters WHERE replayed_at IS NULL").fetchone()[0]
         return jsonify({"pages": pages, "visits": visits, "domains": domains, "enriched": enriched,
-                        "by_source": by_source, "newest": newest, "db_bytes": size})
+                        "by_source": by_source, "newest": newest, "db_bytes": size, "dead_letters": dead})
+
+    # ---------- dead-letter queue ----------
+
+    @app.get("/debug/dlq")
+    def dlq_list():
+        show_all = request.args.get("all") == "1"
+        rows = get_db().execute(
+            "SELECT id, ts, path, content_type, length(body) AS bytes, substr(body, 1, 400) AS head, error, url, ip,"
+            " ua, device, replayed_at, replay_result FROM dead_letters"
+            + ("" if show_all else " WHERE replayed_at IS NULL") + " ORDER BY id DESC LIMIT 200").fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            # A safe, printable preview: bytes as received, non-ASCII and control characters escaped.
+            d["preview"] = bytes(d.pop("head")).decode("ascii", "backslashreplace")
+            d["time_iso"] = dt.datetime.fromtimestamp(d["ts"]).strftime("%Y-%m-%d %H:%M:%S")
+            d["browser"], d["os"] = _ua_summary(d["ua"] or "")
+            out.append(d)
+        return jsonify({"dead_letters": out})
+
+    @app.get("/debug/dlq/<int:dl_id>")
+    def dlq_item(dl_id):
+        row = get_db().execute("SELECT * FROM dead_letters WHERE id = ?", (dl_id,)).fetchone()
+        if row is None:
+            abort(404)
+        if request.args.get("raw") == "1":  # the exact bytes, for offline debugging
+            return app.response_class(bytes(row["body"]), mimetype="application/octet-stream")
+        d = dict(row)
+        d["body"] = bytes(d["body"]).decode("ascii", "backslashreplace")
+        return jsonify(d)
+
+    def _replay(row):
+        """Send a dead letter back through its route. Returns (ok, result)."""
+        headers = {"Authorization": f"Bearer {app.config['TOKEN']}", REPLAY_HEADER: str(row["id"])}
+        if row["ua"]:
+            headers["User-Agent"] = row["ua"]
+        if row["device"]:
+            headers["X-Autodidact-Device"] = row["device"]
+        r = app.test_client().post(row["path"], data=bytes(row["body"]),
+                                   content_type=row["content_type"] or "application/json", headers=headers)
+        result = r.get_data(as_text=True)[:500]
+        ok = 200 <= r.status_code < 300
+        conn = get_db()
+        conn.execute("UPDATE dead_letters SET replayed_at = ?, replay_result = ? WHERE id = ?",
+                     (time.time() if ok else None, f"{r.status_code} {result}", row["id"]))
+        conn.commit()
+        return ok, {"id": row["id"], "status": r.status_code, "ok": ok, "result": r.get_json(silent=True) or result}
+
+    @app.post("/dlq/<int:dl_id>/replay")
+    @require_token
+    def dlq_replay_one(dl_id):
+        row = get_db().execute("SELECT * FROM dead_letters WHERE id = ?", (dl_id,)).fetchone()
+        if row is None:
+            abort(404)
+        if row["replayed_at"]:
+            abort(409, f"dead letter #{dl_id} was already replayed")
+        ok, res = _replay(row)
+        return jsonify(res), (200 if ok else 500)
+
+    @app.post("/dlq/replay")
+    @require_token
+    def dlq_replay_all():
+        rows = get_db().execute("SELECT * FROM dead_letters WHERE replayed_at IS NULL ORDER BY id").fetchall()
+        results = [_replay(row)[1] for row in rows]
+        return jsonify({"replayed": sum(r["ok"] for r in results), "failed": sum(not r["ok"] for r in results),
+                        "results": results})
+
+    @app.delete("/dlq/<int:dl_id>")
+    @require_token
+    def dlq_delete(dl_id):
+        conn = get_db()
+        cur = conn.execute("DELETE FROM dead_letters WHERE id = ?", (dl_id,))
+        conn.commit()
+        if cur.rowcount == 0:
+            abort(404)
+        return jsonify({"deleted": dl_id})
 
     @app.get("/")
     def index():

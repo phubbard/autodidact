@@ -33,11 +33,27 @@
     .s2 { color: var(--ok); } .s3 { color: var(--muted); } .s4 { color: var(--warn); } .s5 { color: var(--err); }
     .method { font-weight: 600; }
     #empty { color: var(--muted); padding: 1rem; }
+    #dlq { margin-bottom: 1.5rem; }
+    #dlq h2 { font-size: 1rem; color: var(--err); margin: 0 0 .3rem; }
+    #dlq .wrap { border-color: var(--err); }
+    code { font-size: .75rem; word-break: break-all; }
   </style>
 </head>
 <body>
 <main>
   <h1><span>Autodidact · recent requests</span> <span><small id="status"></small> &nbsp; <a href="/">search</a></span></h1>
+  <section id="dlq" hidden>
+    <h2>Dead letters <small id="dlq-count"></small></h2>
+    <p class="sub">Requests the server failed on unexpectedly. Each is kept byte-for-byte, and the client was told it was
+      delivered so its queue kept moving. After fixing the bug, replay them:
+      <code>ssh webserver 'set -a; . /srv/autodidact/env; curl -s -X POST -H "Authorization: Bearer $AUTODIDACT_TOKEN" http://127.0.0.1:8765/dlq/replay'</code></p>
+    <div class="wrap">
+      <table>
+        <thead><tr><th>#</th><th>time</th><th>route</th><th>client</th><th>URL</th><th>error</th><th class="num">bytes</th></tr></thead>
+        <tbody id="dlq-rows"></tbody>
+      </table>
+    </div>
+  </section>
   <div class="controls">
     <label><input type="checkbox" id="auto" checked> refresh every 5 s</label>
     <label><input type="checkbox" id="noisy"> show successful dwell heartbeats and CORS preflights</label>
@@ -89,10 +105,25 @@ async function load() {
         <td class="note">${esc(q.note)}</td>
       </tr>`;
     }).join('');
+    await loadDeadLetters(d.now);
     $('#status').textContent = 'updated ' + new Date().toLocaleTimeString();
   } catch (e) {
     $('#status').textContent = 'refresh failed: ' + e;
   }
+}
+async function loadDeadLetters(now) {
+  const dl = (await (await fetch('/debug/dlq')).json()).dead_letters;
+  $('#dlq').hidden = dl.length === 0;
+  $('#dlq-count').textContent = `${dl.length} waiting for replay`;
+  $('#dlq-rows').innerHTML = dl.map((x) => `<tr>
+    <td><a href="/debug/dlq/${x.id}">${x.id}</a></td>
+    <td>${esc(x.time_iso.slice(5, 16))}<div class="sub">${ago(now - x.ts)}</div></td>
+    <td>${esc(x.path)}</td>
+    <td>${esc(x.device || x.ip || '')}<div class="sub">${esc(x.browser)}</div></td>
+    <td class="req">${esc(x.url || '')}</td>
+    <td class="note">${esc(x.error)}${x.replay_result ? `<div class="sub">last replay: ${esc(x.replay_result.slice(0, 120))}</div>` : ''}</td>
+    <td class="num"><a href="/debug/dlq/${x.id}?raw=1">${x.bytes.toLocaleString()}</a></td>
+  </tr>`).join('');
 }
 function schedule() {
   clearInterval(timer);

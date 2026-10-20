@@ -70,6 +70,25 @@ CREATE TABLE IF NOT EXISTS requests (
   note    TEXT    -- e.g. "example.com new page" for /ingest
 );
 
+-- Dead-letter queue: requests to /ingest, /ingest-url or /dwell that hit an unexpected server error.
+-- body is the raw request exactly as received (a BLOB, so any bytes survive); replaying it through the
+-- same route after a fix stores the page. See /debug/dlq and POST /dlq/replay.
+CREATE TABLE IF NOT EXISTS dead_letters (
+  id            INTEGER PRIMARY KEY,
+  ts            REAL NOT NULL,
+  path          TEXT NOT NULL,
+  content_type  TEXT,
+  body          BLOB NOT NULL,
+  error         TEXT NOT NULL,   -- exception type and message
+  traceback     TEXT,
+  url           TEXT,            -- best-effort, for listing
+  ip            TEXT,
+  ua            TEXT,
+  device        TEXT,
+  replayed_at   REAL,            -- set when a replay stored it
+  replay_result TEXT             -- last replay's outcome
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
   title, description, text, summary, tags, domain,
   content='pages', content_rowid='id',

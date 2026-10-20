@@ -218,7 +218,9 @@ def test_ingest_url_unexpected_error_is_json(client, site, monkeypatch):
         raise RuntimeError("kaboom")
     monkeypatch.setattr(extract, "fetch_article", boom)
     r = client.post("/ingest-url", json={"url": site + "/wal"}, headers=HEADERS)
-    assert r.status_code == 500 and r.json["message"].startswith("Not saved: server error (RuntimeError)")
+    # An unexpected error is dead-lettered (see test_dlq.py), and the Shortcut still gets a message.
+    assert r.status_code == 202 and r.json["dead_lettered"]
+    assert r.json["message"].startswith("Not saved yet: server error (RuntimeError); kept for retry as #")
     # Other routes keep the default error pages.
     assert client.post("/ingest", json={}, headers=HEADERS).status_code == 400
     assert not client.post("/ingest", json={}, headers=HEADERS).is_json
