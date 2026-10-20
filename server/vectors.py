@@ -110,22 +110,47 @@ def pending(conn, limit: int):
            ORDER BY p.id DESC LIMIT ?""", (SUMMARY_CHUNK, SUMMARY_CHUNK, limit)).fetchall()
 
 
-def vectorize(conn, encoder, limit: int = 200, batch: int = 32) -> int:
-    """Embed up to *limit* pending pages. Returns the number of vectors written."""
-    rows = pending(conn, limit)
-    work = []  # (page_id, chunk, text)
-    for r in rows:
+def pending_work(conn, limit: int):
+    """[(page_id, chunk, text)] still to embed for up to *limit* pending pages."""
+    work = []
+    for r in pending(conn, limit):
         if not r["has_text"]:
             work += [(r["id"], i, t) for i, t in enumerate(chunks(r["title"] or "", r["description"] or "", r["text"] or ""))]
         if r["summary"] and not r["has_summary"]:
             work.append((r["id"], SUMMARY_CHUNK, f"{r['title'] or ''}\n{r['summary']}"))
-    for i in range(0, len(work), batch):
-        part = work[i:i + batch]
-        vecs = encoder.encode([t for _, _, t in part])
-        conn.executemany("INSERT OR REPLACE INTO chunk_vectors (page_id, chunk, model, vector) VALUES (?, ?, ?, ?)",
-                         [(pid, ch, MODEL, v.tobytes()) for (pid, ch, _), v in zip(part, vecs)])
-        conn.commit()
-    return len(work)
+    return work
+
+
+def encode_work(encoder, work, batch: int = 8):
+    """Yield (page_id, chunk, vector) for *work*. Similar lengths are batched together, since every
+    text in a batch is padded to the longest; small batches keep memory low on the Pi."""
+    order = sorted(range(len(work)), key=lambda i: len(work[i][2]))
+    for s in range(0, len(order), batch):
+        part = [work[i] for i in order[s:s + batch]]
+        for (pid, ch, _), v in zip(part, encoder.encode([t for _, _, t in part])):
+            yield pid, ch, v
+
+
+def store(conn, items):
+    """Insert (page_id, chunk, vector) rows; vector is float32 (ndarray or bytes). Skips pages deleted meanwhile."""
+    rows = [(pid, ch, MODEL, v if isinstance(v, bytes) else v.astype(np.float32).tobytes()) for pid, ch, v in items]
+    conn.executemany("INSERT OR REPLACE INTO chunk_vectors (page_id, chunk, model, vector) "
+                     "SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM pages WHERE id = ?)",
+                     [(*r, r[0]) for r in rows])
+    conn.commit()
+    return len(rows)
+
+
+def vectorize(conn, encoder, limit: int = 200, batch: int = 8) -> int:
+    """Embed up to *limit* pending pages. Returns the number of vectors written."""
+    work = pending_work(conn, limit)
+    done, buf = 0, []
+    for item in encode_work(encoder, work, batch):
+        buf.append(item)
+        if len(buf) >= 64:
+            done += store(conn, buf)
+            buf = []
+    return done + (store(conn, buf) if buf else 0)
 
 
 class VectorIndex:

@@ -105,3 +105,21 @@ def test_pagination_and_keyword_fallbacks(env, tmp_path):
     app2 = create_app(db_path=str(tmp_path / "t.db"), token=TOKEN)
     app2.config["MODEL_DIR"] = str(tmp_path / "nope")
     assert app2.test_client().get("/search?q=motorcycle").json["mode"] == "all"
+
+
+def test_offload_round_trip(env, tmp_path, monkeypatch):
+    """export on the Pi, encode elsewhere, import: same rows as vectorizing in place."""
+    import json as _json
+    import subprocess
+    client, conn = env
+    pid = ingest(client, "https://example.com/a", "LED turn signals", "Factory LED signals.")
+    work = vectors.pending_work(conn, 10)
+    enc = FakeEncoder()
+    encoded = list(vectors.encode_work(enc, work))
+    vectors.store(conn, [(p, c, v.tobytes()) for p, c, v in encoded])   # what --import does with decoded bytes
+    assert vectors.pending_work(conn, 10) == []
+    stored = conn.execute("SELECT vector FROM chunk_vectors WHERE page_id = ? AND chunk = 0", (pid,)).fetchone()[0]
+    assert np.allclose(np.frombuffer(stored, dtype=np.float32), enc.encode([work[0][2]])[0])
+    # A vector for a page deleted in the meantime is skipped, not orphaned.
+    vectors.store(conn, [(99999, 0, encoded[0][2])])
+    assert conn.execute("SELECT COUNT(*) FROM chunk_vectors WHERE page_id = 99999").fetchone()[0] == 0
