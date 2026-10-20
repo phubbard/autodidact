@@ -39,6 +39,7 @@ def main():
     ap.add_argument("--encode", nargs=2, metavar=("WORK", "VECTORS"), help="embed a work file (no database needed)")
     ap.add_argument("--import", dest="import_", metavar="VECTORS", help="store an encoded vectors file")
     ap.add_argument("--model-dir", help="for --encode: where model.onnx and tokenizer.json are")
+    ap.add_argument("--threads", type=int, default=2, help="CPU threads for the model (2 suits the Pi)")
     args = ap.parse_args()
     db_path = os.environ.get("AUTODIDACT_DB", "autodidact.db")
 
@@ -62,15 +63,19 @@ def main():
         print(f"imported {n} vectors")
         return
 
-    encoder = vectors.load_encoder(args.model_dir or model_dir(db_path))
+    encoder = vectors.load_encoder(args.model_dir or model_dir(db_path), args.threads)
     if encoder is None:
         sys.exit(f"no encoder: install numpy, onnxruntime and tokenizers, and put {list(vectors.MODEL_FILES)} "
                  f"in {args.model_dir or model_dir(db_path)}")
     if args.encode:
         src, dst = args.encode
         work = [json.loads(line) for line in open(src)]
+        if os.path.exists(dst):  # resume: skip chunks already encoded
+            done = {(d["page_id"], d["chunk"]) for d in map(json.loads, open(dst))}
+            work = [w for w in work if (w["page_id"], w["chunk"]) not in done]
+            print(f"resuming: {len(done)} already encoded, {len(work)} to go", flush=True)
         t0 = time.time()
-        with open(dst, "w") as f:
+        with open(dst, "a") as f:
             for i, (pid, ch, v) in enumerate(vectors.encode_work(encoder, [(w["page_id"], w["chunk"], w["text"]) for w in work], 16)):
                 f.write(json.dumps({"page_id": pid, "chunk": ch, "vector": base64.b64encode(v.tobytes()).decode()}) + "\n")
                 if (i + 1) % 1000 == 0:

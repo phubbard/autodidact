@@ -67,11 +67,11 @@ class Encoder:
         return (pooled / np.linalg.norm(pooled, axis=1, keepdims=True)).astype(np.float32)
 
 
-def load_encoder(model_dir: str):
+def load_encoder(model_dir: str, threads: int = 2):
     """An Encoder, or None when the packages or model files are missing (search stays keyword-only)."""
     if not available() or not all(os.path.exists(os.path.join(model_dir, f)) for f in MODEL_FILES):
         return None
-    return Encoder(model_dir)
+    return Encoder(model_dir, threads)
 
 
 _WS = re.compile(r"\s+")
