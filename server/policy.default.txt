@@ -1,0 +1,26 @@
+# Autodidact capture policy. The server serves this file to every browser extension at GET /policy
+# (they refresh it hourly) and also enforces it on /ingest, so one edit here applies everywhere.
+# On the Pi the live copy is /srv/autodidact/data/policy.txt, seeded from this file on first start;
+# edit that one. Changes take effect on the next request, no restart needed.
+#
+# One rule per line; blank lines and lines starting with # are ignored.
+#   example.com           host glob: * matches anything (*.bank*, *chase.com)
+#   *youtube.com/shorts/  host glob + path prefix (path and query string, from the first /)
+#   https://x.com/a/b     full URL prefix
+#   !skip-front-pages     directive: never capture a site's front page (path "/" or empty)
+#
+# The extension's own Settings blocklist still applies on top of this (passwords, banks, LAN ranges).
+# These rules only cover browser captures; FreshRSS items and share-sheet links are not filtered.
+
+# Front pages are link lists that change all the time; each change was being stored as a new page.
+!skip-front-pages
+
+# Paul's own admin UIs on the LAN.
+axiom.phfactor.net
+nas.phfactor.net
+
+# YouTube listing pages; individual videos (/watch) are kept.
+*youtube.com/shorts/
+*youtube.com/results
+*youtube.com/feed/
+*youtube.com/hashtag/

@@ -142,6 +142,18 @@ Each scheme only runs on its own platform; Xcode's "platform doesn't match"
 error means the scheme and the destination disagree. After changing signing
 settings, use Product → Clean Build Folder before building again.
 
+## What gets captured: the shared policy
+
+Rules that apply to every browser live on the server, in `/srv/autodidact/data/policy.txt`
+(seeded from `server/policy.default.txt` on first start). Extensions fetch them from
+`GET /policy` hourly and apply them before sending anything, and `/ingest` enforces them too, so
+an edit takes effect everywhere without touching a browser. The default skips site front pages
+(path `/`, which are link lists that change constantly), Paul's LAN admin UIs, and YouTube's
+shorts, search, feed and hashtag pages. Syntax, one rule per line: `example.com` (host glob),
+`*youtube.com/shorts/` (host glob plus path prefix), `https://x.com/a` (URL prefix),
+`!skip-front-pages`. FreshRSS items and share-sheet links are not filtered. Each extension's own
+Settings blocklist (banks, password managers, private address ranges) still applies on top.
+
 ## How capture works
 
 The content script counts seconds a tab is visible and focused. At the dwell

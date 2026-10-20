@@ -24,6 +24,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
 import extract
+import policy
 
 MIN_TEXT_CHARS = 100
 MAX_TEXT_CHARS = 250_000
@@ -35,9 +36,13 @@ REQUEST_LOG_KEEP = 2000          # rows kept in the requests table for /debug
 REQUEST_LOG_SKIP = ("/debug",)   # the debug page polling itself is not interesting
 
 
-def create_app(db_path=None, token=None):
+def create_app(db_path=None, token=None, policy_path=None):
     app = Flask(__name__)
     app.config["DB_PATH"] = db_path or os.environ.get("AUTODIDACT_DB", "autodidact.db")
+    # The capture policy lives next to the database (data/ on the Pi, which the service may write).
+    app.config["POLICY_PATH"] = policy_path or os.environ.get("AUTODIDACT_POLICY") or os.path.join(
+        os.path.dirname(os.path.abspath(app.config["DB_PATH"])), "policy.txt")
+    policy_file = policy.PolicyFile(app.config["POLICY_PATH"])
     app.config["TOKEN"] = token if token is not None else os.environ.get("AUTODIDACT_TOKEN", "")
     app.config["JSON_SORT_KEYS"] = False
     # gunicorn listens on loopback only and Caddy sets X-Forwarded-For, so the
@@ -203,6 +208,14 @@ def create_app(db_path=None, token=None):
         source = (body.get("source") or "web").strip().lower()
         if source not in SOURCES:
             abort(400, f"source must be one of {sorted(SOURCES)}")
+        if source == "web":
+            # Extensions apply the same policy before sending; this catches ones that have not
+            # fetched it yet (or predate it). A 200 tells them to drop the item from their queue.
+            url = (body.get("url") or "").strip()
+            rule = policy_file.get().blocks(url) if url.startswith(("http://", "https://")) else None
+            if rule:  # (a malformed URL falls through to _store_page's 400)
+                g.req_note = f"skipped by policy: {rule}"
+                return jsonify({"skipped": rule})
         res = _store_page(body, source, MIN_TEXT_CHARS)
         return jsonify({"id": res["id"], "created": res["created"], "new_visit": res["new_visit"]})
 
@@ -370,6 +383,10 @@ def create_app(db_path=None, token=None):
         cur = conn.execute("DELETE FROM pages WHERE domain = ? OR domain LIKE ?", (domain, f"%.{domain}"))
         conn.commit()
         return jsonify({"deleted": cur.rowcount, "domain": domain})
+
+    @app.get("/policy")
+    def get_policy():
+        return jsonify(policy_file.get().as_json())
 
     @app.get("/stats")
     def stats():

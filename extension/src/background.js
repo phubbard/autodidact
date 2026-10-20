@@ -38,6 +38,7 @@ const DEFAULTS = {
 };
 const QUEUE_KEY = 'queue';
 const QUEUE_MAX = 500;
+const MAX_SERVER_ERRORS = 20;
 const ALARM = 'autodidact-flush';
 
 // ---------- settings ----------
@@ -101,22 +102,65 @@ function isServerPage(url, settings) {
   try { return new URL(url).origin === new URL(settings.serverUrl).origin; } catch { return false; }
 }
 
-function isBlocked(url, blocklist) {
+// The rule in *rules* that matches *url*, or null. Same syntax and semantics as server/policy.py
+// (both are checked against server/tests/policy_vectors.json by extension/test/unit.mjs):
+//   example.com / *.bank*        host glob
+//   *youtube.com/shorts/         host glob + path prefix (path and query string)
+//   https://github.com/settings  full URL prefix
+// With skipFrontPages, a site's front page (path "/" or empty) matches as "front page".
+function policyMatch(url, rules, skipFrontPages = false) {
   let u;
-  try { u = new URL(url); } catch { return true; }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') return true;
+  try { u = new URL(url); } catch { return 'unparseable URL'; }
+  if ((u.protocol !== 'http:' && u.protocol !== 'https:') || !u.hostname) return 'not http(s)';
+  if (skipFrontPages && (u.pathname === '/' || u.pathname === '')) return 'front page';
   const host = u.hostname;
-  for (const raw of blocklist) {
-    const pat = raw.trim();
-    if (!pat || pat.startsWith('#')) continue;
-    if (pat.includes('/')) {
-      // URL prefix pattern, e.g. https://github.com/settings
-      if (url.startsWith(pat)) return true;
-      continue;
+  const pathAndQuery = (u.pathname || '/') + u.search;
+  for (const raw of rules) {
+    const rule = raw.trim();
+    if (!rule || rule.startsWith('#') || rule.startsWith('!')) continue;
+    if (/^https?:\/\//.test(rule)) {
+      if (url.startsWith(rule)) return rule;
+    } else if (rule.includes('/')) {
+      const i = rule.indexOf('/');
+      if (globToRegex(rule.slice(0, i)).test(host) && pathAndQuery.startsWith(rule.slice(i))) return rule;
+    } else if (globToRegex(rule).test(host)) {
+      return rule;
     }
-    if (globToRegex(pat).test(host)) return true;
   }
-  return false;
+  return null;
+}
+
+function isBlocked(url, blocklist) {
+  return policyMatch(url, blocklist) !== null;
+}
+
+// ---------- server policy ----------
+//
+// The shared capture rules live on the Pi (data/policy.txt, served at GET /policy) so one edit
+// reaches every browser. Cached in storage.local and refreshed hourly from the flush alarm; if the
+// server is unreachable the last copy keeps applying. The local Settings blocklist applies on top.
+const POLICY_KEY = 'serverPolicy';
+const POLICY_MAX_AGE_MS = 60 * 60 * 1000;
+
+async function refreshPolicy(force = false) {
+  const { [POLICY_KEY]: cached } = await api.storage.local.get(POLICY_KEY);
+  if (!force && cached && Date.now() - cached.fetchedAt < POLICY_MAX_AGE_MS) return cached;
+  const settings = await getSettings();
+  try {
+    const r = await fetch(settings.serverUrl.replace(/\/+$/, '') + '/policy', { headers: deviceHeader(settings) });
+    if (!r.ok) return cached ?? null;
+    const p = await r.json();
+    const fresh = { version: p.version, skipFrontPages: !!p.skip_front_pages, rules: p.rules || [], fetchedAt: Date.now() };
+    await api.storage.local.set({ [POLICY_KEY]: fresh });
+    return fresh;
+  } catch {
+    return cached ?? null;
+  }
+}
+
+async function serverPolicyMatch(url) {
+  const p = await refreshPolicy();
+  return p ? policyMatch(url, p.rules, p.skipFrontPages) : null;
 }
 
 // ---------- queue ----------
@@ -162,8 +206,22 @@ async function flush() {
       if (res === 'ok' || res === 'drop') {
         q = q.slice(1);
         await saveQueue(q);
+      } else if (res === 'server-error') {
+        // A 5xx for this particular item. Twice (2026-10-09, 2026-10-19) one item the server could
+        // not store sat at the head of the queue for hours and everything behind it waited. Give up
+        // on an item after MAX_SERVER_ERRORS; the server logs the traceback for each attempt.
+        item.serverErrors = (item.serverErrors || 0) + 1;
+        if (item.serverErrors >= MAX_SERVER_ERRORS) {
+          console.warn('autodidact: dropping item after repeated server errors', item.path, item.body?.url);
+          q = q.slice(1);
+          await saveQueue(q);
+          continue;
+        }
+        q[0] = item;
+        await saveQueue(q);
+        break;
       } else {
-        break; // network down; leave the queue for the alarm
+        break; // network down, or a token/rate problem: leave the queue for the alarm
       }
     }
   } finally {
@@ -198,6 +256,7 @@ async function post(settings, item) {
       console.warn('autodidact: server rejected item', r.status, item.path);
       return 'drop';
     }
+    if (r.status >= 500) return 'server-error';
     return 'retry';
   } catch (e) {
     return 'retry';
@@ -229,6 +288,8 @@ async function handleCapture(payload, sender) {
   if (isServerPage(payload.url, settings)) return { skipped: 'server' };
   if (isBlocked(payload.url, settings.blocklist)) return { skipped: 'blocked' };
   if (payload.canonical_url && isBlocked(payload.canonical_url, settings.blocklist)) return { skipped: 'blocked' };
+  const rule = await serverPolicyMatch(payload.url);
+  if (rule) return { skipped: 'policy', rule };
   await enqueue({ path: '/ingest', body: payload });
   flush();
   return { queued: true };
@@ -239,6 +300,7 @@ async function handleDwell(payload, sender) {
   if (sender.tab?.incognito) return { skipped: 'incognito' };
   if (isServerPage(payload.url, settings)) return { skipped: 'server' };
   if (isBlocked(payload.url, settings.blocklist)) return { skipped: 'blocked' };
+  if (await serverPolicyMatch(payload.url)) return { skipped: 'policy' };
   await enqueue({ path: '/dwell', body: { visit_id: payload.visit_id, dwell_s: payload.dwell_s } });
   flush();
   return { queued: true };
@@ -269,6 +331,7 @@ async function testConnection() {
       headers: { 'Authorization': 'Bearer ' + settings.token, ...deviceHeader(settings) },
     });
     if (!r.ok) return { ok: false, error: 'HTTP ' + r.status };
+    await refreshPolicy(true);
     return { ok: true, stats: await r.json() };
   } catch (e) {
     return { ok: false, error: String(e) };
@@ -290,7 +353,11 @@ api.runtime.onStartup?.addListener(() => {
   api.alarms.create(ALARM, { periodInMinutes: 1 });
   flush();
 });
-api.alarms.onAlarm.addListener((a) => { if (a.name === ALARM) flush(); });
+api.alarms.onAlarm.addListener((a) => {
+  if (a.name !== ALARM) return;
+  flush();
+  refreshPolicy(); // no-op unless the cached policy is over an hour old
+});
 api.storage.onChanged.addListener((changes, area) => {
   updateBadge();
   if (area === 'local' && BACKUP_KEYS.some((k) => k in changes)) backupSettings();

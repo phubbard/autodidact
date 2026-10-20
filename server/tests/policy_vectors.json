@@ -1,0 +1,23 @@
+{
+  "_comment": "Shared by test_policy.py and extension/test/unit.mjs so the server and background.js match URLs the same way. Each case: url, expected blocking rule (or null).",
+  "skip_front_pages": true,
+  "rules": ["axiom.phfactor.net", "*youtube.com/shorts/", "*youtube.com/results", "*.bank*", "https://github.com/settings"],
+  "cases": [
+    ["https://news.ycombinator.com/", "front page"],
+    ["https://news.ycombinator.com", "front page"],
+    ["https://www.qwant.com/?q=raspberry+pi", "front page"],
+    ["https://news.ycombinator.com/item?id=1", null],
+    ["https://www.youtube.com/", "front page"],
+    ["https://www.youtube.com/watch?v=abc", null],
+    ["https://www.youtube.com/shorts/xyz", "*youtube.com/shorts/"],
+    ["https://m.youtube.com/shorts/xyz", "*youtube.com/shorts/"],
+    ["https://www.youtube.com/results?search_query=cats", "*youtube.com/results"],
+    ["https://youtube.com/shortsville", null],
+    ["https://axiom.phfactor.net/models", "axiom.phfactor.net"],
+    ["https://marganna.phfactor.net/2026/10/01/post/", null],
+    ["https://online.bankofexample.com/login", "*.bank*"],
+    ["https://github.com/settings/tokens", "https://github.com/settings"],
+    ["https://github.com/phubbard/autodidact", null],
+    ["ftp://example.com/file", "not http(s)"]
+  ]
+}

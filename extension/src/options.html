@@ -38,7 +38,7 @@
 
   <label for="blocklist">Blocklist</label>
   <textarea id="blocklist" spellcheck="false"></textarea>
-  <div class="hint">One per line. Host globs (<code>*.bank*</code>, <code>192.168.*</code>) or URL prefixes (<code>https://github.com/settings</code>). Lines starting with # are ignored.</div>
+  <div class="hint">One per line. Host globs (<code>*.bank*</code>, <code>192.168.*</code>), host plus path prefix (<code>*example.com/private/</code>) or URL prefixes (<code>https://github.com/settings</code>). Lines starting with # are ignored. Rules for every browser (front pages, YouTube listings, LAN admin pages) live on the server in <code>policy.txt</code> and apply on top of these.</div>
 
   <div class="row">
     <button id="save">Save</button>

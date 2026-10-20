@@ -24,9 +24,11 @@ extension/src/        MV3 WebExtension, one codebase for Chromium + Firefox (+ S
   popup.{html,js}     pause 1 h, block this domain, open search
 extension/build.sh    → dist/chromium, dist/firefox, dist/autodidact-{chromium,firefox}.zip
 extension/test/e2e.mjs  Playwright headless-Chromium end-to-end test (needs a running server)
+extension/test/unit.mjs node-only unit tests of background.js (policy matcher vs server/tests/policy_vectors.json, queue); in CI
 server/app.py         Flask app factory create_app(db_path, token); all HTTP routes + search UI
 server/db.py          schema (pages, visits, embeddings, pages_fts), MIGRATIONS, normalize_url
 server/freshrss_sync.py  Google Reader API client → POST /ingest with source=rss
+server/policy.py      capture policy: parses data/policy.txt (default: server/policy.default.txt), matches URLs; served at GET /policy, enforced on /ingest
 server/extract.py     fetch(), extract() (trafilatura or stdlib fallback), unwrap_apple_news(), fetch_article(); shared by freshrss_sync.py and /ingest-url
 server/embed.py       M2 enrichment job: summary + tags + embeddings via OpenAI-compatible endpoint
 server/templates/     index.html (search UI), page.html (stored text view), debug.html (recent requests)
@@ -48,6 +50,7 @@ AUTODIDACT_DB=./autodidact.db AUTODIDACT_TOKEN=dev server/venv/bin/python server
 # Extension
 extension/build.sh                                          # needs jq and zip
 for f in extension/src/*.js; do node --check "$f"; done      # syntax check, no bundler
+node extension/test/unit.mjs                                # background.js unit tests, no dependencies
 
 # End-to-end (server must be running with AUTODIDACT_TOKEN=e2e-token; needs `npm i playwright` in extension/)
 cd extension && node test/e2e.mjs
@@ -164,6 +167,8 @@ Two sources feed one server. The extension is deliberately dumb: it knows the bl
 - The `requests` table (for `/debug`) is written in an `after_request` hook on every request except `/debug*`, wrapped so a logging failure can never fail the request, and pruned to `REQUEST_LOG_KEEP` rows. Metadata only: never store bodies or page text there. Reverse DNS for it runs only when `/debug/requests` is read, cached, with a 0.8 s budget; on the LAN it mostly yields `dhcp-NNN.phfactor.net`, which is why the extension has a "Device name" setting.
 - **Safari can drop the extension's `storage.local` when the app is reinstalled with a new manifest version** (iPhone, 0.1.0 → 0.1.2 on 2026-10-05: URL and token gone; a same-version reinstall kept them). `background.js` mirrors the settings into the app extension's `UserDefaults` via `sendNativeMessage` (`SafariWebExtensionHandler.swift`, the only native code) and restores them when storage has no token. `nativeMessaging` is in `src/manifest.json` for Safari and stripped by `build.sh` for Chromium and Firefox, which would otherwise prompt for it. The options page refuses to save if it failed to load or the URL/token are blank. A blank configuration never overwrites the backup, so a token cannot be cleared by blanking it on Safari.
 - The extension sends that device name URL-encoded in `X-Autodidact-Device`: `fetch()` throws on header values outside Latin-1, and a throw there leaves the item at the head of the queue for good.
+- **Capture policy is on the Pi** (`data/policy.txt`, re-read on mtime change; seeded from `server/policy.default.txt`). `policy.py` and `policyMatch()` in `background.js` must agree: both run `server/tests/policy_vectors.json`. Extensions cache the policy in `storage.local` (hourly refresh from the flush alarm, forced by Test connection) and keep using the last copy when the server is down. `/ingest` enforces it for `source=web` only and answers 200 `{"skipped": rule}` so old extensions drop the item. The per-browser Settings blocklist is for privacy (banks, password managers, LAN ranges) and shares the matcher.
+- **One bad item must not block a queue.** After `MAX_SERVER_ERRORS` (20) 5xx responses for the same item, `flush()` drops it and moves on; network failures, 401 and 429 are retried forever. Both stuck-queue incidents (2026-10-09 NULL `last_seen`, 2026-10-19 lone UTF-16 surrogate `\ud83d` in page text, now replaced with U+FFFD by `_clean_text`) were server bugs, but this keeps the next one from stalling a browser for hours.
 - Pages on the configured server's own origin are never captured (`isServerPage` in `background.js`), so the search UI does not index itself.
 - The default blocklist includes `localhost`, `127.0.0.1`, `192.168.*` and `10.*`. The e2e test has to remove `127.0.0.1` to capture its fixture site; a LAN page on `204.128.136.*` is *not* blocked by default.
 - Firefox MV3 treats `<all_urls>` host permission as optional. After install the user must grant "Access your data for all websites" or nothing is captured. Safari has the equivalent ("Always Allow on Every Website"). Doc issue, not a code bug.
