@@ -123,6 +123,24 @@ say "Installing requirements"
 run sudo -u "$RUN_USER" "$VENV/bin/pip" install -q --upgrade pip
 run sudo -u "$RUN_USER" "$VENV/bin/pip" install -q -r "$SRC/server/requirements.txt"
 
+# ---------- semantic search model ----------
+
+# gte-small for vectors.py / vectorize.py. Downloaded once (~135 MB) into data/, which the service may read.
+MODEL_DIR="$DATA/models/gte-small"
+MODEL_READY=1
+while read -r name url; do
+  [ -n "$name" ] || continue
+  if [ ! -s "$MODEL_DIR/$name" ]; then
+    say "Downloading $name for semantic search"
+    run sudo -u "$RUN_USER" mkdir -p "$MODEL_DIR"
+    if ! run sudo -u "$RUN_USER" curl -fsSL -o "$MODEL_DIR/$name.part" "$url" \
+       || ! run sudo -u "$RUN_USER" mv "$MODEL_DIR/$name.part" "$MODEL_DIR/$name"; then
+      warn "could not download $url; search stays keyword-only until the next run"
+      MODEL_READY=0
+    fi
+  fi
+done < <(cd "$SRC/server" && "$VENV/bin/python" -c 'import vectors; [print(k, v) for k, v in vectors.MODEL_FILES.items()]' 2>/dev/null)
+
 # ---------- env (secrets) ----------
 
 if [ ! -f "$ENV_FILE" ]; then
@@ -157,6 +175,7 @@ set_env FRESHRSS_URL "${FRESHRSS_URL:-}"
 set_env FRESHRSS_USER "${FRESHRSS_USER:-}"
 set_env FRESHRSS_API_PASSWORD "${FRESHRSS_API_PASSWORD:-}"
 set_env AUTODIDACT_LLM_URL "${AUTODIDACT_LLM_URL:-}"
+set_env AUTODIDACT_CHAT_MODEL "${AUTODIDACT_CHAT_MODEL:-}"
 [ "$DRY_RUN" = 1 ] || { chmod 600 "$ENV_FILE"; chown "$RUN_USER" "$ENV_FILE"; }
 
 # Read env back (for the cron decisions and the summary). Tolerate a missing file in dry-run.
@@ -250,8 +269,14 @@ say "Installing cron jobs"
   else
     echo "# FreshRSS sync disabled: set FRESHRSS_URL/USER/API_PASSWORD in $ENV_FILE and re-run install.sh"
   fi
+  # flock -n: a run still going (or a manual backfill holding the lock) makes the next one skip.
+  if [ "$MODEL_READY" = 1 ]; then
+    echo "*/5 * * * * $RUN_USER cd $SRC/server && set -a && . $ENV_FILE && set +a && flock -n $DATA/vectorize.lock $VENV/bin/python vectorize.py >> $DATA/vectorize.log 2>&1"
+  else
+    echo "# semantic search vectors disabled: the gte-small model is missing from $DATA/models; re-run install.sh"
+  fi
   if [ -n "${AUTODIDACT_LLM_URL:-}" ]; then
-    echo "*/15 * * * * $RUN_USER cd $SRC/server && set -a && . $ENV_FILE && set +a && $VENV/bin/python embed.py --batch 50 >> $DATA/embed.log 2>&1"
+    echo "*/15 * * * * $RUN_USER cd $SRC/server && set -a && . $ENV_FILE && set +a && flock -n $DATA/embed.lock $VENV/bin/python embed.py --batch 60 >> $DATA/embed.log 2>&1"
   else
     echo "# enrichment disabled: set AUTODIDACT_LLM_URL in $ENV_FILE and re-run install.sh"
   fi

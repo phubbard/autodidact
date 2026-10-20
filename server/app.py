@@ -26,12 +26,15 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import db
 import extract
 import policy
+import vectors
 
 MIN_TEXT_CHARS = 100
 MAX_TEXT_CHARS = 250_000
 DEFAULT_LIMIT = 25
 MAX_LIMIT = 200
 SOURCES = {"web", "rss", "news", "shared"}   # news = Apple News via the share sheet, shared = any other shared URL
+FUSE_DEPTH = 100                 # hybrid search: how deep each list goes before fusing
+RRF_K = 60                       # reciprocal rank fusion constant (the usual default)
 MIN_URL_TEXT_CHARS = 200         # /ingest-url: below this the page is a shell (News+ exclusive, paywall, JS-only app)
 REQUEST_LOG_KEEP = 2000          # rows kept in the requests table for /debug
 REQUEST_LOG_SKIP = ("/debug",)   # the debug page polling itself is not interesting
@@ -46,6 +49,24 @@ def create_app(db_path=None, token=None, policy_path=None):
     app.config["POLICY_PATH"] = policy_path or os.environ.get("AUTODIDACT_POLICY") or os.path.join(
         os.path.dirname(os.path.abspath(app.config["DB_PATH"])), "policy.txt")
     policy_file = policy.PolicyFile(app.config["POLICY_PATH"])
+    # Semantic search model (vectors.py); missing files or packages just mean keyword-only search.
+    app.config["MODEL_DIR"] = os.environ.get("AUTODIDACT_MODEL_DIR") or os.path.join(
+        os.path.dirname(os.path.abspath(app.config["DB_PATH"])), "models", vectors.MODEL)
+    semantic = {"encoder": None, "index": None, "loaded": False}
+
+    def _semantic():
+        """(encoder, index) for this worker, loaded on first use; (None, None) when unavailable."""
+        if not semantic["loaded"]:
+            semantic["loaded"] = True
+            enc = app.config.get("ENCODER")  # tests inject a fake
+            if enc is None:
+                try:
+                    enc = vectors.load_encoder(app.config["MODEL_DIR"])
+                except Exception:  # noqa: BLE001 — a broken model file must not break search
+                    app.logger.exception("could not load %s", app.config["MODEL_DIR"])
+            if enc is not None:
+                semantic["encoder"], semantic["index"] = enc, vectors.VectorIndex()
+        return semantic["encoder"], semantic["index"]
     app.config["TOKEN"] = token if token is not None else os.environ.get("AUTODIDACT_TOKEN", "")
     app.config["JSON_SORT_KEYS"] = False
     # gunicorn listens on loopback only and Caddy sets X-Forwarded-For, so the
@@ -365,6 +386,7 @@ def create_app(db_path=None, token=None, policy_path=None):
 
         cols = """p.id, p.url, p.title, p.domain, p.first_seen, p.last_seen, p.visit_count,
                   p.total_dwell_s, p.source, p.feed, p.published_at"""
+        encoder, index = _semantic()
 
         if not q:
             rows = conn.execute(
@@ -382,13 +404,57 @@ def create_app(db_path=None, token=None, policy_path=None):
                   ORDER BY score LIMIT ? OFFSET ?"""
         mode = "all"
         rows = []
+        use_semantic = encoder is not None and len(q) >= 3
+        # With semantic search on, take a deeper keyword list to fuse; paginate after fusing.
+        k_limit, k_offset = (FUSE_DEPTH, 0) if use_semantic else (limit, offset)
         for mode, fts in (("all", fts_query(q, "AND")), ("any", fts_query(q, "OR"))):
             if not fts:
                 break
-            rows = conn.execute(sql, (fts, *params, limit, offset)).fetchall()
+            rows = conn.execute(sql, (fts, *params, k_limit, k_offset)).fetchall()
             if rows:
                 break
-        return jsonify({"q": q, "mode": mode, "results": [_hit(r) for r in rows]})
+        if not use_semantic:
+            return jsonify({"q": q, "mode": mode, "results": [_hit(r) for r in rows]})
+
+        try:
+            index.refresh(conn)
+            allowed = ({r[0] for r in conn.execute(f"SELECT p.id FROM pages p WHERE 1=1 {filt}", params)}
+                       if where else None)
+            near = index.search(encoder.encode([q])[0], k=FUSE_DEPTH, allowed=allowed)
+        except Exception:  # noqa: BLE001 — semantic trouble degrades to keyword search
+            app.logger.exception("semantic search failed")
+            return jsonify({"q": q, "mode": mode, "results": [_hit(r) for r in rows[offset:offset + limit]]})
+
+        # Reciprocal rank fusion: robust to the two lists' scores being on different scales.
+        fused, keyword_hits, semantic_hits = {}, {}, {}
+        keyword_ids = {r["id"] for r in rows}
+        for rank, r in enumerate(rows):
+            fused[r["id"]] = fused.get(r["id"], 0.0) + 1.0 / (RRF_K + rank + 1)
+            keyword_hits[r["id"]] = r
+        for rank, (pid, chunk, cos) in enumerate(near):
+            fused[pid] = fused.get(pid, 0.0) + 1.0 / (RRF_K + rank + 1)
+            semantic_hits[pid] = (chunk, cos)
+        page_ids = sorted(fused, key=fused.get, reverse=True)[offset:offset + limit]
+        extra = [pid for pid in page_ids if pid not in keyword_hits]
+        if extra:
+            marks = ",".join("?" * len(extra))
+            for r in conn.execute(f"SELECT {cols}, p.title, p.description, p.text, p.summary FROM pages p "
+                                  f"WHERE p.id IN ({marks})", extra):
+                snippet = vectors.chunk_text(r, semantic_hits[r["id"]][0]).replace("\n", " ")[:240]
+                keyword_hits[r["id"]] = {**{k: r[k] for k in r.keys() if k not in ("text", "description", "summary")},
+                                         "snippet": html.escape(snippet) + " …", "score": 0}
+        results = []
+        for pid in page_ids:
+            if pid not in keyword_hits:
+                continue  # deleted between the two queries
+            hit = _hit(keyword_hits[pid])
+            in_keyword = pid in keyword_ids
+            hit["match"] = "both" if in_keyword and pid in semantic_hits else "keyword" if in_keyword else "semantic"
+            if pid in semantic_hits:
+                hit["similarity"] = round(semantic_hits[pid][1], 3)
+            hit["fused"] = round(fused[pid], 5)
+            results.append(hit)
+        return jsonify({"q": q, "mode": "hybrid", "keyword_mode": mode, "results": results})
 
     @app.get("/page/<int:page_id>")
     def page(page_id):

@@ -89,6 +89,16 @@ CREATE TABLE IF NOT EXISTS dead_letters (
   replay_result TEXT             -- last replay's outcome
 );
 
+-- Semantic search: gte-small vectors (384 float32) per text chunk, and one for the LLM summary
+-- (chunk = -1). Written by vectorize.py on the Pi; see vectors.py. Deleting a page deletes its vectors.
+CREATE TABLE IF NOT EXISTS chunk_vectors (
+  page_id INTEGER NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+  chunk   INTEGER NOT NULL,
+  model   TEXT NOT NULL,
+  vector  BLOB NOT NULL,
+  PRIMARY KEY (page_id, chunk)
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
   title, description, text, summary, tags, domain,
   content='pages', content_rowid='id',

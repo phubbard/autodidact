@@ -181,6 +181,12 @@ changed text becomes a new row so the old version stays searchable.
 
 ## Search
 
+Hybrid: keyword ranking (below) fused with semantic similarity from a small local model (gte-small,
+running on the Pi's CPU, so search never waits on another machine), so "that post about lighting on
+the Zero forum" can find a page that only says "LED turn signals". A cron job embeds new pages every
+five minutes; LLM summaries written overnight by LM Studio on Axiom are embedded too. Without the
+model files or the numpy/onnxruntime/tokenizers packages, search is keyword-only.
+
 FTS5 with the porter tokenizer over title, description, text, summary, tags
 and domain; title, summary and tags weighted 3×. User input is quoted term by
 term so FTS5 operators cannot break a query, the last word gets a prefix
