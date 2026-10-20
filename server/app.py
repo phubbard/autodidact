@@ -141,6 +141,7 @@ def create_app(db_path=None, token=None):
 
     def _store_page(body: dict, source: str, min_chars: int):
         """Shared by /ingest and /ingest-url. Validates, dedups, records a visit; returns the JSON reply."""
+        body = {k: _clean_text(v) if isinstance(v, str) else v for k, v in body.items()}
         url = (body.get("url") or "").strip()
         text = (body.get("text") or "").strip()
         if not url.startswith(("http://", "https://")):
@@ -465,6 +466,20 @@ def _hit(r):
     d["first_seen_iso"] = _fmt_ts(d["first_seen"])
     d["last_seen_iso"] = _fmt_ts(d["last_seen"])
     return d
+
+
+_LONE_SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
+
+
+def _clean_text(s: str) -> str:
+    """Replace lone UTF-16 surrogates with U+FFFD.
+
+    JavaScript strings can hold half an emoji (a page's own broken text, or a slice that cut a pair
+    in two); JSON carries it as "\\ud83d" and Python decodes it to a str that cannot be encoded as
+    UTF-8. Hashing or storing it then raised UnicodeEncodeError, a 500 the extension retried forever.
+    Properly paired surrogates never reach here: json.loads joins them into one character.
+    """
+    return _LONE_SURROGATE_RE.sub("\ufffd", s)
 
 
 def _refresh_page_stats(conn, page_id):

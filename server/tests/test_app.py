@@ -101,6 +101,17 @@ def test_changed_content_same_visit_id(client):
     assert client.get(f"/page/{r2.json['id']}").json["last_seen"] > 0
 
 
+def test_lone_surrogate_in_text(client):
+    # Half an emoji (a lone high surrogate) arrived from Waterfox and 500'd on every retry.
+    raw = ('{"url": "https://example.com/emoji", "title": "Bad \\ud83d title", "visit_id": "v-emoji",'
+           ' "text": "%s \\ud83d broken emoji, and a good one \\ud83d\\ude00."}' % LOREM)
+    r = client.post("/ingest", data=raw, content_type="application/json", headers=HEADERS)
+    assert r.status_code == 200, r.data
+    page = client.get(f"/page/{r.json['id']}").json
+    assert "\ufffd broken emoji" in page["text"] and "\U0001F600" in page["text"]
+    assert page["title"] == "Bad \ufffd title"
+
+
 def test_canonical_url_same_domain_only(client):
     r = client.post("/ingest", json=capture("https://example.com/p?x=1", canonical_url="https://example.com/p"),
                     headers=HEADERS)
