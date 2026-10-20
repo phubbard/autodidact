@@ -59,9 +59,9 @@ def default_model():
     return _model_cache["chat"]
 
 
-def summarize(page):
+def summarize(page, max_chars=MAX_INPUT_CHARS):
     model = CHAT_MODEL or default_model()
-    prompt = PROMPT.format(title=page["title"] or "", url=page["url"], text=page["text"][:MAX_INPUT_CHARS])
+    prompt = PROMPT.format(title=page["title"] or "", url=page["url"], text=page["text"][:max_chars])
     resp = _post("/chat/completions", {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
@@ -92,7 +92,21 @@ def main():
     ).fetchall()
     for row in rows:
         try:
-            summary, tags = summarize(row)
+            try:
+                summary, tags = summarize(row)
+            except urllib.error.HTTPError as e:
+                if not 400 <= e.code < 500:
+                    raise
+                # LM Studio rejected this request (seen: 400 Bad Request on one page, 2026-10-20),
+                # usually something about the page's text. Try once with much less of it.
+                print(f"HTTP {e.code} for {row['id']}; retrying with shorter text", file=sys.stderr)
+                summary, tags = summarize(row, max_chars=3000)
+        except urllib.error.HTTPError as e:
+            if e.code >= 500:
+                print(f"LLM server error, stopping: {e}", file=sys.stderr)
+                break
+            print(f"summary failed for {row['id']} {row['url']}: {e}", file=sys.stderr)
+            summary, tags = "", []
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
             # Axiom asleep or LM Studio down: stop; the next run tries again.
             print(f"LLM unreachable, stopping: {e}", file=sys.stderr)
