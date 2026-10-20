@@ -67,6 +67,21 @@ def create_app(db_path=None, token=None, policy_path=None):
             if enc is not None:
                 semantic["encoder"], semantic["index"] = enc, vectors.VectorIndex()
         return semantic["encoder"], semantic["index"]
+
+    def _warm():
+        # Load the model and vectors when the worker starts, not on the first search: under load
+        # (a backfill using the CPU) that first search took long enough to fail.
+        with app.app_context():
+            try:
+                enc, index = _semantic()
+                if enc is not None:
+                    enc.encode(["warm up"])
+                    index.refresh(get_db())
+            except Exception:  # noqa: BLE001
+                app.logger.exception("semantic warm-up failed")
+
+    if os.environ.get("AUTODIDACT_WARM") == "1":  # set by the systemd unit; off for tests and dev
+        threading.Thread(target=_warm, name="semantic-warmup", daemon=True).start()
     app.config["TOKEN"] = token if token is not None else os.environ.get("AUTODIDACT_TOKEN", "")
     app.config["JSON_SORT_KEYS"] = False
     # gunicorn listens on loopback only and Caddy sets X-Forwarded-For, so the

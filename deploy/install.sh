@@ -198,6 +198,8 @@ Wants=network-online.target
 User=$RUN_USER
 WorkingDirectory=$SRC/server
 EnvironmentFile=$ENV_FILE
+# Load the semantic search model at worker start rather than on the first search.
+Environment=AUTODIDACT_WARM=1
 ExecStart=$VENV/bin/gunicorn -w 2 --threads 4 -b 127.0.0.1:$PORT --access-logfile - 'app:create_app()'
 Restart=on-failure
 RestartSec=3
