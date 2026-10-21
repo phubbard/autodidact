@@ -1,5 +1,5 @@
 {
-  "_comment": "Shared by test_policy.py and extension/test/unit.mjs so the server and background.js match URLs the same way. Each case: url, expected blocking rule (or null).",
+  "_comment": "Shared by test_policy.py and extension/test/unit.mjs so the server and background.js match URLs the same way. Each case: url, expected blocking rule (or null), and optionally the page context the extension detected.",
   "skip_front_pages": true,
   "rules": [
     "axiom.phfactor.net",
@@ -92,10 +92,63 @@
     [
       "https://wordpress.com/",
       "front page"
+    ],
+    [
+      "https://www.someblog.net/",
+      null,
+      {
+        "platform": "wordpress",
+        "blog_front": true
+      }
+    ],
+    [
+      "https://www.bignews.com/",
+      "front page",
+      {
+        "platform": "wordpress",
+        "blog_front": false
+      }
+    ],
+    [
+      "https://www.slowboring.com/",
+      null,
+      {
+        "platform": "substack",
+        "blog_front": true
+      }
+    ],
+    [
+      "https://example.blogspot.com/",
+      "front page",
+      {
+        "platform": "blogger",
+        "blog_front": true
+      }
+    ],
+    [
+      "https://www.someblog.net/",
+      "front page",
+      {
+        "platform": "",
+        "blog_front": false
+      }
+    ],
+    [
+      "https://axiom.phfactor.net/",
+      "axiom.phfactor.net",
+      {
+        "platform": "wordpress",
+        "blog_front": true
+      }
     ]
   ],
   "allow": [
     "*.substack.com",
     "*.wordpress.com"
+  ],
+  "allow_platforms": [
+    "wordpress",
+    "substack",
+    "ghost"
   ]
 }

@@ -9,6 +9,8 @@
 #   https://x.com/a/b     full URL prefix
 #   !skip-front-pages     directive: never capture a site's front page (path "/" or empty)
 #   !allow <rule>         directive: never block what <rule> matches (wins over everything above)
+#   !allow-platform a b   directive: keep front pages the extension identifies as a blog on platform a or b
+#                         (wordpress, substack, ghost, blogger); lifts only the front-page skip
 #
 # The extension's own Settings blocklist still applies on top of this (passwords, banks, LAN ranges).
 # These rules only cover browser captures; FreshRSS items and share-sheet links are not filtered.
@@ -19,6 +21,9 @@
 # their own domains are not covered by these. "!allow <rule>" overrides every block rule.
 !allow *.substack.com
 !allow *.wordpress.com
+# Blogs on their own domains: the extension (0.1.6+) recognises the platform from the page markup and
+# whether the front page shows a few full posts (a blog) or many short teasers (a news site).
+!allow-platform wordpress substack ghost
 
 # Paul's own admin UIs on the LAN.
 axiom.phfactor.net

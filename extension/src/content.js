@@ -125,8 +125,41 @@
     return location.href;
   }
 
+  // Blog platforms label themselves in the page markup (the URL says nothing on a custom domain).
+  // The server's policy can then keep their front pages, which list recent posts ("!allow-platform").
+  function detectPlatform() {
+    const gen = (document.querySelector('meta[name="generator" i]')?.content || '').toLowerCase();
+    const host = location.hostname;
+    if (gen.startsWith('wordpress') || document.querySelector('link[rel="https://api.w.org/"]')) return 'wordpress';
+    if (gen.startsWith('ghost')) return 'ghost';
+    if (gen.startsWith('blogger') || host.endsWith('.blogspot.com')) return 'blogger';
+    if (host.endsWith('.substack.com') || document.querySelector('script[src*="substackcdn.com"], link[href*="substackcdn.com"]')) {
+      return 'substack';
+    }
+    return '';
+  }
+
+  // WordPress also runs news sites, whose front page is a wall of short teasers. A blog's front page
+  // shows a few posts with real text in each (ma.tt: 20 posts, ~970 chars each; techcrunch.com: 34
+  // teasers, ~90 chars). Substack's front page is always one newsletter's posts.
+  function looksLikeBlogFront(platform) {
+    if (platform === 'substack') return true;
+    const posts = [...document.querySelectorAll('article, .hentry, .post')]
+      .filter((el) => !el.parentElement?.closest('article, .hentry, .post'));
+    if (posts.length < 1 || posts.length > 30) return false;  // ma.tt shows 20; length is the real test
+    const avgChars = posts.reduce((n, el) => n + (el.innerText || '').trim().length, 0) / posts.length;
+    return avgChars >= 300;
+  }
+
+  function pageKind() {
+    const platform = detectPlatform();
+    const front = location.pathname === '/' || location.pathname === '';
+    return { platform, blog_front: front && !!platform && looksLikeBlogFront(platform) };
+  }
+
   function buildPayload(text) {
     return {
+      ...pageKind(),
       visit_id: visitId,
       url: location.href,
       canonical_url: canonicalUrl(),
@@ -180,7 +213,7 @@
 
   function flushDwell() {
     if (!captured) return;
-    send('dwell', { visit_id: visitId, url: location.href, dwell_s: dwellS });
+    send('dwell', { visit_id: visitId, url: location.href, dwell_s: dwellS, ...pageKind() });
   }
 
   // SPA navigation: popstate/hashchange fire in the isolated world; pushState

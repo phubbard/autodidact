@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 
 DEFAULT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "policy.default.txt")
 SKIP_FRONT_PAGES = "!skip-front-pages"
+ALLOW_PLATFORM = "!allow-platform"   # "!allow-platform wordpress substack": keep blog front pages
 ALLOW = "!allow "   # "!allow <rule>": never block what <rule> matches. Written as a directive so that
                     # extensions older than 0.1.5, which ignore "!" lines, do not read it as a block rule.
 
@@ -28,6 +29,7 @@ class Policy:
         self.text = text
         self.rules: list[str] = []
         self.allow: list[str] = []
+        self.allow_platforms: list[str] = []
         self.skip_front_pages = False
         for line in text.splitlines():
             rule = line.strip()
@@ -35,6 +37,8 @@ class Policy:
                 continue
             if rule == SKIP_FRONT_PAGES:
                 self.skip_front_pages = True
+            elif rule.startswith(ALLOW_PLATFORM):
+                self.allow_platforms += [p for p in re.split(r"[\s,]+", rule[len(ALLOW_PLATFORM):].lower()) if p]
             elif rule.startswith(ALLOW) and rule[len(ALLOW):].strip():
                 self.allow.append(rule[len(ALLOW):].strip())
             elif not rule.startswith("!"):
@@ -43,11 +47,12 @@ class Policy:
 
     def as_json(self) -> dict:
         return {"version": self.version, "skip_front_pages": self.skip_front_pages, "rules": self.rules,
-                "allow": self.allow}
+                "allow": self.allow, "allow_platforms": self.allow_platforms}
 
-    def blocks(self, url: str):
-        """The rule that blocks *url* ("front page" for the directive), or None."""
-        return matches(url, self.rules, self.skip_front_pages, self.allow)
+    def blocks(self, url: str, page=None):
+        """The rule that blocks *url* ("front page" for the directive), or None. *page*: the capture's
+        {"platform", "blog_front"} as detected by the extension."""
+        return matches(url, self.rules, self.skip_front_pages, self.allow, self.allow_platforms, page)
 
 
 def _hits(url: str, host: str, path_and_query: str, rule: str) -> bool:
@@ -59,7 +64,7 @@ def _hits(url: str, host: str, path_and_query: str, rule: str) -> bool:
     return bool(_glob(rule).match(host))
 
 
-def matches(url: str, rules, skip_front_pages: bool = False, allow=()):
+def matches(url: str, rules, skip_front_pages: bool = False, allow=(), allow_platforms=(), page=None):
     try:
         u = urlsplit(url)
     except ValueError:
@@ -70,7 +75,8 @@ def matches(url: str, rules, skip_front_pages: bool = False, allow=()):
     path_and_query = (u.path or "/") + (f"?{u.query}" if u.query else "")
     if any(_hits(url, host, path_and_query, a) for a in allow):
         return None
-    if skip_front_pages and u.path in ("", "/"):
+    blog_front = bool(page and page.get("blog_front") and page.get("platform") in allow_platforms)
+    if skip_front_pages and u.path in ("", "/") and not blog_front:
         return "front page"
     return next((rule for rule in rules if _hits(url, host, path_and_query, rule)), None)
 

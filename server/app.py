@@ -288,7 +288,8 @@ def create_app(db_path=None, token=None, policy_path=None):
             # Extensions apply the same policy before sending; this catches ones that have not
             # fetched it yet (or predate it). A 200 tells them to drop the item from their queue.
             url = (body.get("url") or "").strip()
-            rule = policy_file.get().blocks(url) if url.startswith(("http://", "https://")) else None
+            page = {"platform": body.get("platform"), "blog_front": body.get("blog_front")}
+            rule = policy_file.get().blocks(url, page) if url.startswith(("http://", "https://")) else None
             if rule:  # (a malformed URL falls through to _store_page's 400)
                 g.req_note = f"skipped by policy: {rule}"
                 return jsonify({"skipped": rule})

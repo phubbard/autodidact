@@ -38,7 +38,10 @@ const DEFAULTS = {
 };
 const QUEUE_KEY = 'queue';
 const QUEUE_MAX = 500;
-const MAX_SERVER_ERRORS = 20;
+const MAX_SERVER_ERRORS = 20;                 // per item; with backoff that is about 13 hours of tries
+const BACKOFF_BASE_MS = 60 * 1000;
+const BACKOFF_MAX_MS = 60 * 60 * 1000;
+const MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;  // undelivered for two weeks: give up
 const ALARM = 'autodidact-flush';
 
 // ---------- settings ----------
@@ -120,14 +123,17 @@ function ruleHits(url, host, pathAndQuery, raw) {
   return globToRegex(rule).test(host);
 }
 
-function policyMatch(url, rules, skipFrontPages = false, allow = []) {
+// *page* ({platform, blog_front}, from the content script) lifts the front-page skip when the
+// policy lists that platform in allowPlatforms ("!allow-platform wordpress substack ghost").
+function policyMatch(url, rules, skipFrontPages = false, allow = [], allowPlatforms = [], page = null) {
   let u;
   try { u = new URL(url); } catch { return 'unparseable URL'; }
   if ((u.protocol !== 'http:' && u.protocol !== 'https:') || !u.hostname) return 'not http(s)';
   const host = u.hostname;
   const pathAndQuery = (u.pathname || '/') + u.search;
   if (allow.some((a) => ruleHits(url, host, pathAndQuery, a))) return null;
-  if (skipFrontPages && (u.pathname === '/' || u.pathname === '')) return 'front page';
+  if (skipFrontPages && (u.pathname === '/' || u.pathname === '')
+      && !(page?.blog_front && allowPlatforms.includes(page.platform))) return 'front page';
   for (const raw of rules) {
     if (ruleHits(url, host, pathAndQuery, raw)) return raw.trim();
   }
@@ -155,7 +161,7 @@ async function refreshPolicy(force = false) {
     if (!r.ok) return cached ?? null;
     const p = await r.json();
     const fresh = { version: p.version, skipFrontPages: !!p.skip_front_pages, rules: p.rules || [],
-                    allow: p.allow || [], fetchedAt: Date.now() };
+                    allow: p.allow || [], allowPlatforms: p.allow_platforms || [], fetchedAt: Date.now() };
     await api.storage.local.set({ [POLICY_KEY]: fresh });
     return fresh;
   } catch {
@@ -163,9 +169,9 @@ async function refreshPolicy(force = false) {
   }
 }
 
-async function serverPolicyMatch(url) {
+async function serverPolicyMatch(url, page = null) {
   const p = await refreshPolicy();
-  return p ? policyMatch(url, p.rules, p.skipFrontPages, p.allow || []) : null;
+  return p ? policyMatch(url, p.rules, p.skipFrontPages, p.allow || [], p.allowPlatforms || [], page) : null;
 }
 
 // ---------- queue ----------
@@ -186,48 +192,92 @@ async function saveQueue(q) {
   }
 }
 
+// Every read-modify-write of the queue goes through this lock. The worker is a single JS context,
+// but its awaits interleave: a capture enqueued while flush() was posting used to be overwritten when
+// flush saved its own stale copy of the queue. fn gets the current queue and returns the new one.
+let queueLock = Promise.resolve();
+function updateQueue(fn) {
+  const run = queueLock.then(async () => {
+    const { [QUEUE_KEY]: q = [] } = await api.storage.local.get(QUEUE_KEY);
+    const next = fn(q);
+    if (next !== q) await saveQueue(next);
+    return next;
+  });
+  queueLock = run.catch(() => {});
+  return run;
+}
+
+function newQid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
+
 async function enqueue(item) {
-  let { [QUEUE_KEY]: q = [] } = await api.storage.local.get(QUEUE_KEY);
-  if (item.path === '/dwell') {
-    // Heartbeats for the same visit supersede each other; keep only the latest.
-    q = q.filter((i) => !(i.path === '/dwell' && i.body.visit_id === item.body.visit_id));
-  }
-  q.push(item);
-  while (q.length > QUEUE_MAX) q.shift();
-  await saveQueue(q);
+  item = { ...item, qid: newQid(), enqueuedAt: Date.now() };
+  await updateQueue((q) => {
+    if (item.path === '/dwell') {
+      // Heartbeats for the same visit supersede each other; keep only the latest.
+      q = q.filter((i) => !(i.path === '/dwell' && i.body.visit_id === item.body.visit_id));
+    }
+    q = [...q, item];
+    while (q.length > QUEUE_MAX) q.shift();
+    return q;
+  });
   await updateBadge();
 }
 
+const removeItem = (qid) => updateQueue((q) => q.filter((i) => i.qid !== qid));
+const patchItem = (qid, fields) => updateQueue((q) => q.map((i) => (i.qid === qid ? { ...i, ...fields } : i)));
+
+// Exponential backoff per item: 1, 2, 4 … minutes, capped at an hour, with ±20% jitter so browsers
+// do not retry in lockstep.
+function backoffMs(attempts) {
+  return Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** (attempts - 1)) * (0.8 + 0.4 * Math.random());
+}
+
+// One pass over the queue. An item the server answers with an error waits out its own backoff while
+// the items behind it go ahead (two incidents, 2026-10-09 and 2026-10-19, had one item stall a whole
+// queue for hours). A dwell update waits for its own page's capture. If the server cannot be reached
+// at all, or rejects the token, the pass stops: nothing else would get through either, and the
+// one-minute alarm tries again. Nothing is given up for being unreachable, only after
+// MAX_SERVER_ERRORS server errors on one item or after MAX_AGE_MS in the queue.
 let flushing = false;
 async function flush() {
   if (flushing) return;
   flushing = true;
   try {
     const settings = await getSettings();
-    let { [QUEUE_KEY]: q = [] } = await api.storage.local.get(QUEUE_KEY);
-    while (q.length) {
-      const item = q[0];
+    // Items queued by older versions have no id or timestamp yet.
+    const q = await updateQueue((cur) => (cur.some((i) => !i.qid)
+      ? cur.map((i) => (i.qid ? i : { ...i, qid: newQid(), enqueuedAt: i.enqueuedAt || Date.now() }))
+      : cur));
+    const waiting = new Set();  // visit ids whose capture is still queued
+    for (const item of q) {
+      const now = Date.now();
+      const visit = item.body?.visit_id;
+      if (now - (item.enqueuedAt || now) > MAX_AGE_MS) {
+        console.warn('autodidact: dropping item older than', MAX_AGE_MS / 86400000, 'days', item.path, item.body?.url);
+        await removeItem(item.qid);
+        continue;
+      }
+      if (item.path === '/dwell' && waiting.has(visit)) continue;
+      if ((item.notBefore || 0) > now) {
+        if (item.path === '/ingest' && visit) waiting.add(visit);
+        continue;
+      }
       const res = await post(settings, item);
       if (res === 'ok' || res === 'drop') {
-        q = q.slice(1);
-        await saveQueue(q);
-      } else if (res === 'server-error') {
-        // A 5xx for this particular item. Twice (2026-10-09, 2026-10-19) one item the server could
-        // not store sat at the head of the queue for hours and everything behind it waited. Give up
-        // on an item after MAX_SERVER_ERRORS; the server logs the traceback for each attempt.
-        item.serverErrors = (item.serverErrors || 0) + 1;
-        if (item.serverErrors >= MAX_SERVER_ERRORS) {
-          console.warn('autodidact: dropping item after repeated server errors', item.path, item.body?.url);
-          q = q.slice(1);
-          await saveQueue(q);
-          continue;
-        }
-        q[0] = item;
-        await saveQueue(q);
-        break;
-      } else {
-        break; // network down, or a token/rate problem: leave the queue for the alarm
+        await removeItem(item.qid);
+        continue;
       }
+      if (res === 'unreachable' || res === 'auth') break;
+      const attempts = (item.attempts || 0) + 1;
+      if (res === 'server-error' && attempts >= MAX_SERVER_ERRORS) {
+        console.warn('autodidact: dropping item after repeated server errors', item.path, item.body?.url);
+        await removeItem(item.qid);
+        continue;
+      }
+      await patchItem(item.qid, { attempts, notBefore: Date.now() + backoffMs(attempts) });
+      if (item.path === '/ingest' && visit) waiting.add(visit);
     }
   } finally {
     flushing = false;
@@ -256,15 +306,16 @@ async function post(settings, item) {
       body: JSON.stringify(item.body),
     });
     if (r.ok) return 'ok';
-    // 4xx means the server rejected this item; retrying will not help.
-    if (r.status >= 400 && r.status < 500 && r.status !== 401 && r.status !== 429) {
+    if (r.status === 401) return 'auth';           // wrong token: every item would fail the same way
+    if (r.status === 429) return 'rate-limited';
+    // Any other 4xx means the server rejected this item; retrying will not help.
+    if (r.status >= 400 && r.status < 500) {
       console.warn('autodidact: server rejected item', r.status, item.path);
       return 'drop';
     }
-    if (r.status >= 500) return 'server-error';
-    return 'retry';
+    return 'server-error';
   } catch (e) {
-    return 'retry';
+    return 'unreachable';
   }
 }
 
@@ -293,7 +344,7 @@ async function handleCapture(payload, sender) {
   if (isServerPage(payload.url, settings)) return { skipped: 'server' };
   if (isBlocked(payload.url, settings.blocklist)) return { skipped: 'blocked' };
   if (payload.canonical_url && isBlocked(payload.canonical_url, settings.blocklist)) return { skipped: 'blocked' };
-  const rule = await serverPolicyMatch(payload.url);
+  const rule = await serverPolicyMatch(payload.url, payload);
   if (rule) return { skipped: 'policy', rule };
   await enqueue({ path: '/ingest', body: payload });
   flush();
@@ -305,7 +356,7 @@ async function handleDwell(payload, sender) {
   if (sender.tab?.incognito) return { skipped: 'incognito' };
   if (isServerPage(payload.url, settings)) return { skipped: 'server' };
   if (isBlocked(payload.url, settings.blocklist)) return { skipped: 'blocked' };
-  if (await serverPolicyMatch(payload.url)) return { skipped: 'policy' };
+  if (await serverPolicyMatch(payload.url, payload)) return { skipped: 'policy' };
   await enqueue({ path: '/dwell', body: { visit_id: payload.visit_id, dwell_s: payload.dwell_s } });
   flush();
   return { queued: true };
