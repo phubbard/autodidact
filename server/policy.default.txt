@@ -8,12 +8,17 @@
 #   *youtube.com/shorts/  host glob + path prefix (path and query string, from the first /)
 #   https://x.com/a/b     full URL prefix
 #   !skip-front-pages     directive: never capture a site's front page (path "/" or empty)
+#   !allow <rule>         directive: never block what <rule> matches (wins over everything above)
 #
 # The extension's own Settings blocklist still applies on top of this (passwords, banks, LAN ranges).
 # These rules only cover browser captures; FreshRSS items and share-sheet links are not filtered.
 
 # Front pages are link lists that change all the time; each change was being stored as a new page.
 !skip-front-pages
+# ...except blog platforms, where the front page is the latest posts (Paul, 2026-10-20). Blogs on
+# their own domains are not covered by these. "!allow <rule>" overrides every block rule.
+!allow *.substack.com
+!allow *.wordpress.com
 
 # Paul's own admin UIs on the LAN.
 axiom.phfactor.net

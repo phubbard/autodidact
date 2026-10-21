@@ -14,6 +14,8 @@ from urllib.parse import urlsplit
 
 DEFAULT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "policy.default.txt")
 SKIP_FRONT_PAGES = "!skip-front-pages"
+ALLOW = "!allow "   # "!allow <rule>": never block what <rule> matches. Written as a directive so that
+                    # extensions older than 0.1.5, which ignore "!" lines, do not read it as a block rule.
 
 
 def _glob(pattern: str) -> re.Pattern:
@@ -25,6 +27,7 @@ class Policy:
     def __init__(self, text: str):
         self.text = text
         self.rules: list[str] = []
+        self.allow: list[str] = []
         self.skip_front_pages = False
         for line in text.splitlines():
             rule = line.strip()
@@ -32,19 +35,31 @@ class Policy:
                 continue
             if rule == SKIP_FRONT_PAGES:
                 self.skip_front_pages = True
+            elif rule.startswith(ALLOW) and rule[len(ALLOW):].strip():
+                self.allow.append(rule[len(ALLOW):].strip())
             elif not rule.startswith("!"):
                 self.rules.append(rule)
         self.version = hashlib.sha256(text.encode()).hexdigest()[:12]
 
     def as_json(self) -> dict:
-        return {"version": self.version, "skip_front_pages": self.skip_front_pages, "rules": self.rules}
+        return {"version": self.version, "skip_front_pages": self.skip_front_pages, "rules": self.rules,
+                "allow": self.allow}
 
     def blocks(self, url: str):
         """The rule that blocks *url* ("front page" for the directive), or None."""
-        return matches(url, self.rules, self.skip_front_pages)
+        return matches(url, self.rules, self.skip_front_pages, self.allow)
 
 
-def matches(url: str, rules, skip_front_pages: bool = False):
+def _hits(url: str, host: str, path_and_query: str, rule: str) -> bool:
+    if rule.startswith(("http://", "https://")):
+        return url.startswith(rule)
+    if "/" in rule:
+        host_glob, path_prefix = rule.split("/", 1)
+        return bool(_glob(host_glob).match(host)) and path_and_query.startswith("/" + path_prefix)
+    return bool(_glob(rule).match(host))
+
+
+def matches(url: str, rules, skip_front_pages: bool = False, allow=()):
     try:
         u = urlsplit(url)
     except ValueError:
@@ -52,20 +67,12 @@ def matches(url: str, rules, skip_front_pages: bool = False):
     if u.scheme not in ("http", "https") or not u.hostname:
         return "not http(s)"
     host = u.hostname
+    path_and_query = (u.path or "/") + (f"?{u.query}" if u.query else "")
+    if any(_hits(url, host, path_and_query, a) for a in allow):
+        return None
     if skip_front_pages and u.path in ("", "/"):
         return "front page"
-    path_and_query = (u.path or "/") + (f"?{u.query}" if u.query else "")
-    for rule in rules:
-        if rule.startswith(("http://", "https://")):
-            if url.startswith(rule):
-                return rule
-        elif "/" in rule:
-            host_glob, path_prefix = rule.split("/", 1)
-            if _glob(host_glob).match(host) and path_and_query.startswith("/" + path_prefix):
-                return rule
-        elif _glob(rule).match(host):
-            return rule
-    return None
+    return next((rule for rule in rules if _hits(url, host, path_and_query, rule)), None)
 
 
 class PolicyFile:

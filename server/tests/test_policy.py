@@ -19,12 +19,13 @@ VECTORS = json.load(open(os.path.join(os.path.dirname(__file__), "policy_vectors
 @pytest.mark.parametrize("url,expected", VECTORS["cases"])
 def test_shared_vectors(url, expected):
     # The same file drives extension/test/unit.mjs, so background.js must agree with these.
-    assert policy.matches(url, VECTORS["rules"], VECTORS["skip_front_pages"]) == expected
+    assert policy.matches(url, VECTORS["rules"], VECTORS["skip_front_pages"], VECTORS["allow"]) == expected
 
 
 def test_parse_directives_comments_and_version():
-    p = policy.Policy("# comment\n\n!skip-front-pages\n  axiom.phfactor.net  \n!unknown-directive\n")
-    assert p.skip_front_pages and p.rules == ["axiom.phfactor.net"]
+    p = policy.Policy("# comment\n\n!skip-front-pages\n  axiom.phfactor.net  \n!unknown-directive\n!allow *.substack.com\n!allow \n")
+    assert p.skip_front_pages and p.rules == ["axiom.phfactor.net"] and p.allow == ["*.substack.com"]
+    assert p.as_json()["allow"] == ["*.substack.com"]
     assert p.as_json()["version"] == policy.Policy(p.text).version != policy.Policy("x").version
 
 
@@ -54,7 +55,7 @@ def test_policy_file_seeded_served_and_reloaded(setup):
     path.write_text("example.org\n")
     os.utime(path, (time.time() + 5, time.time() + 5))   # make sure the mtime moves
     j2 = client.get("/policy").json
-    assert j2 == {"version": j2["version"], "skip_front_pages": False, "rules": ["example.org"]}
+    assert j2 == {"version": j2["version"], "skip_front_pages": False, "rules": ["example.org"], "allow": []}
     assert j2["version"] != j["version"]
 
 

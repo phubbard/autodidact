@@ -55,7 +55,7 @@ const test = async (name, fn) => { await fn(); passed++; console.log('ok -', nam
 await test('policy matcher agrees with the server vectors', () => {
   const { ctx } = worker({ respond: () => [200, {}] });
   for (const [url, expected] of VECTORS.cases) {
-    assert.equal(ctx.policyMatch(url, VECTORS.rules, VECTORS.skip_front_pages), expected, url);
+    assert.equal(ctx.policyMatch(url, VECTORS.rules, VECTORS.skip_front_pages, VECTORS.allow), expected, url);
   }
 });
 

@@ -108,24 +108,28 @@ function isServerPage(url, settings) {
 //   *youtube.com/shorts/         host glob + path prefix (path and query string)
 //   https://github.com/settings  full URL prefix
 // With skipFrontPages, a site's front page (path "/" or empty) matches as "front page".
-function policyMatch(url, rules, skipFrontPages = false) {
+// Anything an *allow* rule matches (the server's "!allow" lines, e.g. *.substack.com) is never blocked.
+function ruleHits(url, host, pathAndQuery, raw) {
+  const rule = raw.trim();
+  if (!rule || rule.startsWith('#') || rule.startsWith('!')) return false;
+  if (/^https?:\/\//.test(rule)) return url.startsWith(rule);
+  if (rule.includes('/')) {
+    const i = rule.indexOf('/');
+    return globToRegex(rule.slice(0, i)).test(host) && pathAndQuery.startsWith(rule.slice(i));
+  }
+  return globToRegex(rule).test(host);
+}
+
+function policyMatch(url, rules, skipFrontPages = false, allow = []) {
   let u;
   try { u = new URL(url); } catch { return 'unparseable URL'; }
   if ((u.protocol !== 'http:' && u.protocol !== 'https:') || !u.hostname) return 'not http(s)';
-  if (skipFrontPages && (u.pathname === '/' || u.pathname === '')) return 'front page';
   const host = u.hostname;
   const pathAndQuery = (u.pathname || '/') + u.search;
+  if (allow.some((a) => ruleHits(url, host, pathAndQuery, a))) return null;
+  if (skipFrontPages && (u.pathname === '/' || u.pathname === '')) return 'front page';
   for (const raw of rules) {
-    const rule = raw.trim();
-    if (!rule || rule.startsWith('#') || rule.startsWith('!')) continue;
-    if (/^https?:\/\//.test(rule)) {
-      if (url.startsWith(rule)) return rule;
-    } else if (rule.includes('/')) {
-      const i = rule.indexOf('/');
-      if (globToRegex(rule.slice(0, i)).test(host) && pathAndQuery.startsWith(rule.slice(i))) return rule;
-    } else if (globToRegex(rule).test(host)) {
-      return rule;
-    }
+    if (ruleHits(url, host, pathAndQuery, raw)) return raw.trim();
   }
   return null;
 }
@@ -150,7 +154,8 @@ async function refreshPolicy(force = false) {
     const r = await fetch(settings.serverUrl.replace(/\/+$/, '') + '/policy', { headers: deviceHeader(settings) });
     if (!r.ok) return cached ?? null;
     const p = await r.json();
-    const fresh = { version: p.version, skipFrontPages: !!p.skip_front_pages, rules: p.rules || [], fetchedAt: Date.now() };
+    const fresh = { version: p.version, skipFrontPages: !!p.skip_front_pages, rules: p.rules || [],
+                    allow: p.allow || [], fetchedAt: Date.now() };
     await api.storage.local.set({ [POLICY_KEY]: fresh });
     return fresh;
   } catch {
@@ -160,7 +165,7 @@ async function refreshPolicy(force = false) {
 
 async function serverPolicyMatch(url) {
   const p = await refreshPolicy();
-  return p ? policyMatch(url, p.rules, p.skipFrontPages) : null;
+  return p ? policyMatch(url, p.rules, p.skipFrontPages, p.allow || []) : null;
 }
 
 // ---------- queue ----------
