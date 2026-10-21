@@ -10,6 +10,10 @@
     .meta { color: #6b7280; font-size: .85rem; }
     .meta a { color: inherit; }
     pre { white-space: pre-wrap; font: inherit; margin-top: 1.5rem; }
+    .related { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #6b728055; }
+    .related h2 { font-size: 1rem; margin: 0 0 .5rem; }
+    .related li { margin-bottom: .45rem; }
+    .related .meta { margin-left: .3rem; }
     .tags span { display: inline-block; padding: .1rem .5rem; border: 1px solid #6b7280; border-radius: 999px; font-size: .8rem; margin-right: .3rem; }
   </style>
 </head>
@@ -23,6 +27,17 @@
   </p>
   {% if page.summary %}<p><em>{{ page.summary }}</em></p>{% endif %}
   {% if page.tags %}<p class="tags">{% for t in page.tags %}<span>{{ t }}</span>{% endfor %}</p>{% endif %}
+  {% if related %}
+  <section class="related">
+    <h2>Related</h2>
+    <ol>
+      {% for r in related %}
+      <li><a href="/page/{{ r.id }}?format=html">{{ r.title or r.url }}</a>
+        <span class="meta">{{ r.domain }} · {{ r.first_seen_iso[:10] }}{% if r.source != 'web' %} · {{ r.source }}{% endif %} · {{ (r.similarity * 100)|round|int }}%</span></li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
   <pre>{{ page.text }}</pre>
 </body>
 </html>

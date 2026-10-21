@@ -5,3 +5,4 @@ trafilatura>=1.9   # optional: full-article extraction for excerpt-only feeds in
 numpy>=1.26        # semantic search (vectors.py); search stays keyword-only without these three
 onnxruntime>=1.17  #   runs the local gte-small model on the Pi's CPU
 tokenizers>=0.15   #   its tokenizer
+youtube-transcript-api>=1.2   # transcripts.py: captions for captured YouTube videos

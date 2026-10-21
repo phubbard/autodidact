@@ -99,6 +99,18 @@ CREATE TABLE IF NOT EXISTS chunk_vectors (
   PRIMARY KEY (page_id, chunk)
 );
 
+-- YouTube transcripts fetched by transcripts.py: one row per page it handled (status ok or none).
+-- The transcript itself is prepended to pages.text; this table is the bookkeeping.
+CREATE TABLE IF NOT EXISTS transcripts (
+  page_id    INTEGER PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,
+  video_id   TEXT NOT NULL,
+  status     TEXT NOT NULL,      -- ok | none
+  lang       TEXT,
+  chars      INTEGER,
+  error      TEXT,
+  fetched_at INTEGER NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
   title, description, text, summary, tags, domain,
   content='pages', content_rowid='id',

@@ -181,6 +181,22 @@ class VectorIndex:
                            if rows else np.zeros((0, DIM), dtype=np.float32))
             self._stamp = stamp
 
+    def page_vector(self, page_id: int):
+        """The mean of a page's chunk vectors (including its summary's), normalised; None if it has none."""
+        if self.matrix is None or not len(self.matrix):
+            return None
+        rows = self.matrix[self.page_ids == page_id]
+        if not len(rows):
+            return None
+        v = rows.mean(axis=0)
+        return (v / max(float(np.linalg.norm(v)), 1e-9)).astype(np.float32)
+
+    def chunk_scores(self, page_id: int, qvec):
+        """[(chunk, cosine)] for one page's chunks, best first."""
+        mask = self.page_ids == page_id
+        sims = self.matrix[mask] @ qvec
+        return sorted(zip(self.chunk_ids[mask].tolist(), sims.tolist()), key=lambda x: -x[1])
+
     def search(self, qvec, k: int = 100, allowed=None):
         """[(page_id, best_chunk, cosine)] for the k nearest pages, best first. *allowed*: optional set of page ids."""
         if self.matrix is None or not len(self.matrix):

@@ -200,7 +200,7 @@ WorkingDirectory=$SRC/server
 EnvironmentFile=$ENV_FILE
 # Load the semantic search model at worker start rather than on the first search.
 Environment=AUTODIDACT_WARM=1
-ExecStart=$VENV/bin/gunicorn -w 2 --threads 4 -b 127.0.0.1:$PORT --access-logfile - 'app:create_app()'
+ExecStart=$VENV/bin/gunicorn -w 2 --threads 4 --timeout 120 -b 127.0.0.1:$PORT --access-logfile - 'app:create_app()'
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=yes
@@ -277,6 +277,7 @@ say "Installing cron jobs"
   else
     echo "# semantic search vectors disabled: the gte-small model is missing from $DATA/models; re-run install.sh"
   fi
+  echo "7,37 * * * * $RUN_USER cd $SRC/server && set -a && . $ENV_FILE && set +a && flock -n $DATA/transcripts.lock $VENV/bin/python transcripts.py --limit 40 >> $DATA/transcripts.log 2>&1"
   if [ -n "${AUTODIDACT_LLM_URL:-}" ]; then
     echo "*/15 * * * * $RUN_USER cd $SRC/server && set -a && . $ENV_FILE && set +a && flock -n $DATA/embed.lock $VENV/bin/python embed.py --batch 60 >> $DATA/embed.log 2>&1"
   else

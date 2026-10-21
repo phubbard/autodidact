@@ -179,6 +179,17 @@ parameters, `www.`, default ports, trailing slashes) and dedups on URL hash
 plus content hash: the same page seen again adds a visit; the same URL with
 changed text becomes a new row so the old version stays searchable.
 
+## Ask, related pages, transcripts
+
+- **Ask** (button next to the search box, or ⌘↩): the best-matching passages from your archive go to
+  the LLM on Axiom, which answers with numbered citations linking to the pages. If Axiom does not
+  answer within 90 s you get the sources without an answer. `GET /ask?q=…` takes the same filters as
+  `/search`.
+- **Related**: each stored page's view lists the pages nearest to it in meaning
+  (`GET /page/<id>/related`).
+- **YouTube transcripts**: a cron job fetches captions for captured videos and puts them at the top of
+  the stored text, so a video is found by what was said rather than by its comments.
+
 ## Search
 
 Hybrid: keyword ranking (below) fused with semantic similarity from a small local model (gte-small,

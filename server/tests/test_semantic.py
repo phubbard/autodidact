@@ -123,3 +123,60 @@ def test_offload_round_trip(env, tmp_path, monkeypatch):
     # A vector for a page deleted in the meantime is skipped, not orphaned.
     vectors.store(conn, [(99999, 0, encoded[0][2])])
     assert conn.execute("SELECT COUNT(*) FROM chunk_vectors WHERE page_id = 99999").fetchone()[0] == 0
+
+
+def test_related_pages(env):
+    client, conn = env
+    a = ingest(client, "https://old.reddit.com/r/Zero/1", "LED turn signals", "Factory LED signals for the Zero.")
+    b = ingest(client, "https://old.reddit.com/r/Zero/2", "LED blinkers", "Smoked LED signals, brighter lighting.")
+    a2 = ingest(client, "https://old.reddit.com/r/Zero/1", "LED turn signals", "Factory LED signals for the Zero, edited.")
+    ingest(client, "https://example.com/cooking", "Sausage recipes", "How to make sausage at home.")
+    vectors.vectorize(conn, FakeEncoder())
+    rel = client.get(f"/page/{a}/related").json["related"]
+    ids = [r["id"] for r in rel]
+    assert ids[0] == b and a2 not in ids and a not in ids        # other versions of the same URL are left out
+    assert rel[0]["similarity"] > rel[-1]["similarity"]
+    html = client.get(f"/page/{a}?format=html").data.decode()
+    assert "Related" in html and "LED blinkers" in html
+    assert client.get("/page/99999/related").status_code == 404
+
+
+def test_ask_answers_from_sources(env):
+    client, conn = env
+    target = ingest(client, "https://old.reddit.com/r/ZeroMotorcycles/part6", "My SR/S mods part 6 - OEM Zero LED turn signals",
+                    "Part number 41-08273 for the smoked LED signals; the dealer changes a setting.")
+    ingest(client, "https://example.com/cooking", "Sausage recipes", "How to make sausage at home.")
+    vectors.vectorize(conn, FakeEncoder())
+    seen = {}
+
+    def fake_llm(messages, timeout):
+        seen["messages"] = messages
+        return "The part number is 41-08273 【1†L2-L3】.", "fake-model"
+    client.application.config["LLM"] = fake_llm
+    j = client.get("/ask?q=part number for the LED blinkers").json
+    assert j["answer"] == "The part number is 41-08273 [1]." and j["model"] == "fake-model"
+    assert j["sources"][0]["id"] == target and j["sources"][0]["n"] == 1
+    prompt = seen["messages"][1]["content"]
+    assert "[1] My SR/S mods part 6" in prompt and "41-08273" in prompt and "Question: part number" in prompt
+
+
+def test_ask_without_llm_returns_sources(env, monkeypatch):
+    client, conn = env
+    ingest(client, "https://example.com/led", "LED turn signals", "Factory LED signals.")
+    vectors.vectorize(conn, FakeEncoder())
+
+    def down(messages, timeout):
+        raise TimeoutError("timed out")
+    client.application.config["LLM"] = down
+    j = client.get("/ask?q=LED signals").json
+    assert j["answer"] is None and j["sources"] and "did not answer (TimeoutError)" in j["error"]
+    client.application.config["LLM"] = None
+    monkeypatch.delenv("AUTODIDACT_LLM_URL", raising=False)
+    assert "No LLM configured" in client.get("/ask?q=LED signals").json["error"]
+    assert client.get("/ask?q=a").status_code == 400
+
+
+def test_ask_empty_archive(tmp_path):
+    app = create_app(db_path=str(tmp_path / "empty.db"), token=TOKEN)
+    app.config.update(TESTING=True, ENCODER=FakeEncoder())
+    assert app.test_client().get("/ask?q=anything at all").json["error"].startswith("Nothing")

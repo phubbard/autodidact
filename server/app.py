@@ -25,6 +25,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
 import extract
+import llm
 import policy
 import vectors
 
@@ -33,6 +34,9 @@ MAX_TEXT_CHARS = 250_000
 DEFAULT_LIMIT = 25
 MAX_LIMIT = 200
 SOURCES = {"web", "rss", "news", "shared"}   # news = Apple News via the share sheet, shared = any other shared URL
+ASK_SOURCES = 6                  # /ask: pages handed to the LLM
+ASK_CHUNKS_PER_PAGE = 2          # /ask: best-matching passages per page
+ASK_TIMEOUT_S = 90
 FUSE_DEPTH = 100                 # hybrid search: how deep each list goes before fusing
 RRF_K = 60                       # reciprocal rank fusion constant (the usual default)
 MIN_URL_TEXT_CHARS = 200         # /ingest-url: below this the page is a shell (News+ exclusive, paywall, JS-only app)
@@ -378,15 +382,12 @@ def create_app(db_path=None, token=None, policy_path=None):
 
     # ---------- search ----------
 
-    @app.get("/search")
-    def search():
-        q = (request.args.get("q") or "").strip()
+    def _run_search(q, limit, offset):
+        """Hybrid (or keyword, or recent) search with the filters in request.args. Returns the /search reply."""
         after = _parse_date(request.args.get("after"))
         before = _parse_date(request.args.get("before"), end_of_day=True)
         domain = (request.args.get("domain") or "").strip().lower()
         source = (request.args.get("source") or "").strip().lower()
-        limit = min(MAX_LIMIT, max(1, int(request.args.get("limit") or DEFAULT_LIMIT)))
-        offset = max(0, int(request.args.get("offset") or 0))
 
         conn = get_db()
         where, params = [], []
@@ -410,7 +411,7 @@ def create_app(db_path=None, token=None, policy_path=None):
                     FROM pages p WHERE 1=1 {filt} ORDER BY p.last_seen DESC LIMIT ? OFFSET ?""",
                 (*params, limit, offset),
             ).fetchall()
-            return jsonify({"q": q, "mode": "recent", "results": [_hit(r) for r in rows]})
+            return {"q": q, "mode": "recent", "results": [_hit(r) for r in rows]}
 
         sql = f"""SELECT {cols},
                          snippet(pages_fts, 2, '<mark>', '</mark>', ' … ', 28) AS snippet,
@@ -430,7 +431,7 @@ def create_app(db_path=None, token=None, policy_path=None):
             if rows:
                 break
         if not use_semantic:
-            return jsonify({"q": q, "mode": mode, "results": [_hit(r) for r in rows]})
+            return {"q": q, "mode": mode, "results": [_hit(r) for r in rows]}
 
         try:
             index.refresh(conn)
@@ -439,7 +440,7 @@ def create_app(db_path=None, token=None, policy_path=None):
             near = index.search(encoder.encode([q])[0], k=FUSE_DEPTH, allowed=allowed)
         except Exception:  # noqa: BLE001 — semantic trouble degrades to keyword search
             app.logger.exception("semantic search failed")
-            return jsonify({"q": q, "mode": mode, "results": [_hit(r) for r in rows[offset:offset + limit]]})
+            return {"q": q, "mode": mode, "results": [_hit(r) for r in rows[offset:offset + limit]]}
 
         # Reciprocal rank fusion: robust to the two lists' scores being on different scales.
         fused, keyword_hits, semantic_hits = {}, {}, {}
@@ -470,7 +471,80 @@ def create_app(db_path=None, token=None, policy_path=None):
                 hit["similarity"] = round(semantic_hits[pid][1], 3)
             hit["fused"] = round(fused[pid], 5)
             results.append(hit)
-        return jsonify({"q": q, "mode": "hybrid", "keyword_mode": mode, "results": results})
+        return {"q": q, "mode": "hybrid", "keyword_mode": mode, "results": results}
+
+    ASK_PROMPT = (
+        "You help Paul find and recall things he has read. Answer his question using only the numbered "
+        "sources below, which are passages from pages he read, with the date he read them. Cite sources "
+        "inline as [1], [2]. Be brief and concrete (names, numbers, part numbers when present). If the "
+        "sources do not answer the question, say so in one sentence and point to the closest sources. "
+        "Never invent details that are not in the sources.")
+
+    def _passages(page, qvec, index):
+        """The page's best-matching chunks for the question, or its opening when it has no vectors."""
+        if qvec is not None and index is not None:
+            scored = index.chunk_scores(page["id"], qvec)
+            texts = [vectors.chunk_text(page, ch) for ch, _ in scored[:ASK_CHUNKS_PER_PAGE]]
+            texts = [t for t in texts if t]
+            if texts:
+                return texts
+        return [(page["text"] or "")[:1800]]
+
+    @app.get("/ask")
+    def ask():
+        """Answer a question from the archive: hybrid retrieval, then the LLM on Axiom writes an answer
+        citing the sources. If the LLM is unavailable the reply still carries the sources."""
+        q = (request.args.get("q") or "").strip()
+        if len(q) < 3:
+            abort(400, "ask a question")
+        t0 = time.perf_counter()
+        found = _run_search(q, ASK_SOURCES, 0)["results"]
+        sources, blocks = [], []
+        if found:
+            conn = get_db()
+            encoder, index = _semantic()
+            qvec = encoder.encode([q])[0] if encoder is not None else None
+            marks = ",".join("?" * len(found))
+            pages = {r["id"]: r for r in conn.execute(
+                f"SELECT id, title, description, text, summary, url, domain, first_seen FROM pages WHERE id IN ({marks})",
+                [h["id"] for h in found])}
+            for h in found:
+                page = pages.get(h["id"])
+                if page is None:
+                    continue
+                n = len(sources) + 1
+                sources.append({"n": n, "id": page["id"], "title": page["title"] or page["url"], "url": page["url"],
+                                "domain": page["domain"], "first_seen_iso": _fmt_ts(page["first_seen"])})
+                text = "\n…\n".join(_passages(page, qvec, index))
+                blocks.append(f"[{n}] {page['title'] or page['url']} ({page['domain']}, read {_fmt_ts(page['first_seen'])[:10]})\n{text}")
+        reply = {"q": q, "answer": None, "sources": sources}
+        if not sources:
+            reply["error"] = "Nothing in the archive matches that."
+            return jsonify(reply)
+        ask_llm = app.config.get("LLM") or llm.chat   # tests inject a fake
+        if not (app.config.get("LLM") or llm.configured()):
+            reply["error"] = "No LLM configured (AUTODIDACT_LLM_URL); here are the closest pages."
+            return jsonify(reply)
+        messages = [{"role": "system", "content": ASK_PROMPT},
+                    {"role": "user", "content": "Sources:\n\n" + "\n\n".join(blocks) + f"\n\nQuestion: {q}"}]
+        try:
+            answer, model_name = ask_llm(messages, timeout=ASK_TIMEOUT_S)
+        except Exception as e:  # noqa: BLE001 — Axiom asleep, slow, or LM Studio down: sources still help
+            app.logger.warning("ask: LLM failed: %s", e)
+            reply["error"] = f"The LLM did not answer ({type(e).__name__}); here are the closest pages."
+            return jsonify(reply)
+        # gpt-oss writes citations as 【1】 or 【1†L3-L5】; the UI links plain [1].
+        answer = re.sub(r"【(\d+)[^】]*】", r"[\1]", answer)
+        reply.update(answer=answer, model=model_name, ms=round((time.perf_counter() - t0) * 1000))
+        g.req_note = f"answered with {len(sources)} sources in {reply['ms']} ms"
+        return jsonify(reply)
+
+    @app.get("/search")
+    def search():
+        q = (request.args.get("q") or "").strip()
+        limit = min(MAX_LIMIT, max(1, int(request.args.get("limit") or DEFAULT_LIMIT)))
+        offset = max(0, int(request.args.get("offset") or 0))
+        return jsonify(_run_search(q, limit, offset))
 
     @app.get("/page/<int:page_id>")
     def page(page_id):
@@ -485,8 +559,53 @@ def create_app(db_path=None, token=None, policy_path=None):
         d["tags"] = json.loads(d["tags"]) if d.get("tags") else []
         d["visits"] = [dict(v) for v in visits]
         if request.accept_mimetypes.best == "text/html" or request.args.get("format") == "html":
-            return render_template("page.html", page=d, fmt=_fmt_ts)
+            try:
+                related = _related(page_id)
+            except Exception:  # noqa: BLE001 — the page itself must still render
+                app.logger.exception("related pages failed for %s", page_id)
+                related = []
+            return render_template("page.html", page=d, fmt=_fmt_ts, related=related)
         return jsonify(d)
+
+    def _related(page_id, limit=8):
+        """Pages nearest in meaning to *page_id*: [{id, title, url, domain, source, similarity, ...}].
+        Other stored versions of the same URL are left out. [] when semantic search is unavailable."""
+        encoder, index = _semantic()
+        if encoder is None:
+            return []
+        conn = get_db()
+        index.refresh(conn)
+        vec = index.page_vector(page_id)
+        if vec is None:
+            return []
+        me = conn.execute("SELECT url_hash FROM pages WHERE id = ?", (page_id,)).fetchone()
+        near = [n for n in index.search(vec, k=limit * 3 + 5) if n[0] != page_id]
+        if not near:
+            return []
+        sims = {pid: cos for pid, _, cos in near}
+        marks = ",".join("?" * len(sims))
+        rows = {r["id"]: r for r in conn.execute(
+            f"""SELECT id, url, url_hash, title, domain, source, feed, first_seen, last_seen FROM pages
+                WHERE id IN ({marks})""", list(sims))}
+        out, seen_urls = [], {me["url_hash"]} if me else set()
+        for pid, _, cos in near:
+            r = rows.get(pid)
+            if r is None or r["url_hash"] in seen_urls:
+                continue
+            seen_urls.add(r["url_hash"])
+            d = _hit({k: r[k] for k in r.keys() if k != "url_hash"})
+            d["similarity"] = round(cos, 3)
+            out.append(d)
+            if len(out) == limit:
+                break
+        return out
+
+    @app.get("/page/<int:page_id>/related")
+    def page_related(page_id):
+        if get_db().execute("SELECT 1 FROM pages WHERE id = ?", (page_id,)).fetchone() is None:
+            abort(404)
+        limit = min(50, max(1, int(request.args.get("limit") or 8)))
+        return jsonify({"id": page_id, "related": _related(page_id, limit)})
 
     @app.delete("/page/<int:page_id>")
     @require_token

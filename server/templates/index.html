@@ -34,6 +34,14 @@
     .hit .foot { color: var(--muted); font-size: .8rem; display: flex; gap: 1rem; flex-wrap: wrap; }
     .hit .foot a { color: var(--muted); }
     mark { background: var(--mark); color: inherit; padding: 0 .1em; border-radius: 2px; }
+    button.ask { font: inherit; padding: .55rem 1rem; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+    button.ask:disabled { opacity: .6; cursor: progress; }
+    #answer { background: var(--card); border-left: 3px solid var(--accent); border-radius: 10px; padding: .9rem 1rem; margin: 1rem 0 .5rem; line-height: 1.5; }
+    #answer .who { color: var(--muted); font-size: .8rem; margin-bottom: .4rem; }
+    #answer .err { color: var(--muted); }
+    #answer ol { margin: .6rem 0 0; padding-left: 1.3rem; font-size: .85rem; }
+    #answer ol a { color: var(--accent); text-decoration: none; }
+    #answer sup a { color: var(--accent); text-decoration: none; font-weight: 600; }
     button.more { font: inherit; padding: .5rem 1rem; border-radius: 8px; border: 1px solid var(--muted); background: var(--card); color: var(--fg); cursor: pointer; }
   </style>
 </head>
@@ -43,6 +51,7 @@
   <form id="f">
     <div class="row">
       <input type="search" id="q" placeholder="What do you half-remember?" autofocus autocomplete="off">
+      <button type="button" id="ask" class="ask" title="Answer from your archive (⌘↩)">Ask</button>
     </div>
     <div class="row">
       <div class="chips" id="chips">
@@ -64,6 +73,7 @@
       </div>
     </div>
   </form>
+  <div id="answer" hidden></div>
   <div id="meta"></div>
   <div id="results"></div>
   <button class="more" id="more" hidden>More</button>
@@ -135,6 +145,38 @@ async function run(append = false) {
   if (n === PAGE) offset += PAGE;
   history.replaceState(null, '', '?' + key);
 }
+
+// Ask: an answer written by the LLM on Axiom from the best-matching passages, citing them.
+function answerHtml(text, sources) {
+  const byN = Object.fromEntries(sources.map((s) => [s.n, s]));
+  return esc(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[(\d+)\]/g, (m, n) => byN[n] ? `<sup><a href="/page/${byN[n].id}?format=html" title="${esc(byN[n].title)}">${n}</a></sup>` : m)
+    .replace(/\n/g, '<br>');
+}
+async function ask() {
+  const q = $('#q').value.trim();
+  if (q.length < 3) return;
+  const p = params(); p.delete('limit'); p.delete('offset');
+  const box = $('#answer');
+  box.hidden = false;
+  box.innerHTML = '<div class="who">Asking Axiom…</div>';
+  $('#ask').disabled = true;
+  try {
+    const d = await (await fetch('/ask?' + p)).json();
+    const list = d.sources.length ? '<ol>' + d.sources.map((s) =>
+      `<li><a href="/page/${s.id}?format=html">${esc(s.title)}</a> <span class="who">${esc(s.domain)} · ${esc(s.first_seen_iso.slice(0, 10))}</span></li>`).join('') + '</ol>' : '';
+    box.innerHTML = d.answer
+      ? `<div class="who">${esc(d.model || '')} · ${((d.ms || 0) / 1000).toFixed(1)} s</div>${answerHtml(d.answer, d.sources)}${list}`
+      : `<div class="err">${esc(d.error || 'No answer.')}</div>${list}`;
+  } catch (e) {
+    box.innerHTML = `<div class="err">Ask failed: ${esc(String(e))}</div>`;
+  } finally {
+    $('#ask').disabled = false;
+  }
+}
+$('#ask').addEventListener('click', ask);
+$('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ask(); } });
 
 $('#f').addEventListener('submit', (e) => { e.preventDefault(); run(); });
 $('#q').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(run, 250); });
