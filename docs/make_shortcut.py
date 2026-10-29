@@ -72,8 +72,9 @@ def build(server: str = SERVER) -> dict:
         "WFWorkflowIcon": {"WFWorkflowIconStartColor": 463140863, "WFWorkflowIconGlyphNumber": 59446},
         "WFWorkflowImportQuestions": [], "WFQuickActionSurfaces": [],
         "WFWorkflowTypes": ["ActionExtension"],  # appears in the share sheet
-        "WFWorkflowInputContentItemClasses": ["WFURLContentItem", "WFSafariWebPageContentItem",
-                                              "WFArticleContentItem", "WFRichTextContentItem", "WFStringContentItem"],
+        # URLs and Safari pages only. Offered text as well, Apple News hands the Shortcut the story's text
+        # (Get Type: "Text") with no link in it; offered only URLs, it hands over the apple.news link.
+        "WFWorkflowInputContentItemClasses": ["WFURLContentItem", "WFSafariWebPageContentItem"],
         "WFWorkflowOutputContentItemClasses": [], "WFWorkflowHasShortcutInputVariables": True,
         "WFWorkflowHasOutputFallback": False,
         "WFWorkflowNoInputBehavior": {"Name": "WFWorkflowNoInputBehaviorGetClipboard", "Parameters": {}},

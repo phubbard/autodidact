@@ -36,11 +36,11 @@ curl -sS -X POST https://autodidact.phfactor.net/ingest-url \
 
 ## Building the Shortcut
 
-Shortcuts app → `+` → name it **Send to Autodidact**. Open the shortcut's info sheet (ⓘ) and turn on **Show in Share Sheet**; under "Share Sheet Types" keep **URLs**, **Safari web pages**, **Articles** and **Rich text** ticked, untick the rest.
+Shortcuts app → `+` → name it **Send to Autodidact**. Open the shortcut's info sheet (ⓘ) and turn on **Show in Share Sheet**; under "Share Sheet Types" keep only **URLs** and **Safari web pages** ticked. Do not add Text, Rich text or Articles: Apple News then shares the story as text with no link in it, "Get URLs" finds nothing, and the shortcut stops without a word (2026-10-28).
 
 Actions, in order:
 
-1. **Receive** `URLs, Safari web pages, Articles, Rich text` **input from** `Share Sheet`. In "If there's no input": `Get Clipboard` (so running it from the Shortcuts app with a copied link also works).
+1. **Receive** `URLs, Safari web pages` **input from** `Share Sheet`. In "If there's no input": `Get Clipboard` (so running it from the Shortcuts app with a copied link also works).
 2. **Get URLs from** `Shortcut Input`. (For a Safari page this yields the page URL; for Apple News it yields the `apple.news` link; for text it finds any URL inside.)
 3. **Get Device Details** → `Device Name`. (Shows up as the "client" on the server's `/debug` page.)
 4. **Get Contents of URL** with:
@@ -48,7 +48,8 @@ Actions, in order:
    - Method: `POST`
    - Headers: `Authorization` = `Bearer <token from /srv/autodidact/env>`
    - Request Body: `JSON`
-     - `url` → the **URLs** variable from step 2 (if it is a list, Shortcuts sends the first; wrap steps 4–5 in **Repeat with Each** over URLs if you want every link from a text selection)
+     - `url` → the **URLs** variable from step 2. Do not put **Get Item from List** in front of it: with no link found, that action ends the shortcut silently. The server takes the first link itself.
+     - `shared` → **Shortcut Input** (the server looks for a link here when `url` is empty, and quotes it in the error otherwise)
      - `client` → the **Device Name** variable from step 3
 5. **Get Dictionary Value** `message` **in** `Contents of URL`.
 6. **Show Notification**: the Dictionary Value, with "Play Sound" off. Errors arrive as "Not saved: <reason>".
@@ -59,7 +60,7 @@ Optionally insert an **Ask for Input** (Text, prompt "Note?", default empty) bef
 
 - **Apple News** (iPhone or Mac): on a story, Share → scroll the action row → **Send to Autodidact**. Saving a story in News and sending it to Autodidact are separate gestures; News has no hook that fires on save. For stories with a web version the publisher's text is stored; for News+ exclusives the server stores the title, the blurb, and the apple.news link, and says in the text that nothing more could be fetched.
 - **Safari on iPhone**: Share → Send to Autodidact. Only needed for pages the Safari extension did not capture (short dwell, or a page you want tagged with a note).
-- **Mail, Messages, anywhere with a link**: long-press the link → Share, or share the message and the shortcut finds the URL in the text.
+- **Mail, Messages, anywhere with a link**: long-press the link → Share. Sharing a block of text does not offer the shortcut (it takes only URLs); copy the text and run the shortcut from the Shortcuts app or widget instead, and it finds the link on the clipboard.
 - **Mac**: Share menu in Safari, News and Notes shows Shortcuts share-sheet entries once the shortcut has synced. Or select a link and run it from the Shortcuts menu bar item.
 
 Away from home it works over Tailscale (the Caddy rule admits `100.64.0.0/10`); without Tailscale the shortcut fails with a connection error and nothing is stored — unlike the extension, there is no queue, so re-share later.
