@@ -258,8 +258,16 @@ EOF
     fi
   fi
   if [ "$DRY_RUN" != 1 ]; then
+    # The site's access log must belong to the caddy user: \`caddy validate\` below runs as root and
+    # would otherwise create it root-owned, and the reload (as caddy) then fails to open it (2026-10-28).
+    CADDY_LOG=/var/log/caddy/autodidact.access.log
+    if id caddy >/dev/null 2>&1; then
+      install -d -o caddy -g caddy /var/log/caddy
+      [ -e "$CADDY_LOG" ] || install -o caddy -g caddy -m 640 /dev/null "$CADDY_LOG"
+      chown caddy:caddy "$CADDY_LOG"
+    fi
     if caddy validate --config "$CADDYFILE" --adapter caddyfile >/dev/null 2>&1; then
-      systemctl reload caddy
+      systemctl reload caddy || warn "caddy reload failed; it keeps running the previous config. See: journalctl -u caddy -n 20"
     else
       warn "caddy validate failed; not reloading. Check: caddy validate --config $CADDYFILE"
       caddy validate --config "$CADDYFILE" --adapter caddyfile 2>&1 | tail -5 >&2 || true
