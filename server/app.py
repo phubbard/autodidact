@@ -341,7 +341,10 @@ def create_app(db_path=None, token=None, policy_path=None):
         shell = len(text) < MIN_URL_TEXT_CHARS
         if shell:
             # Nothing much extractable (News+ exclusive, paywall shell, JS-only page): keep what we know
-            # so the story is still findable by title, and say so in the stored text.
+            # so the story is still findable by title, and say so in the stored text. An apple.news page
+            # that did not forward anywhere is Apple's landing page ("Opening story… Tap here"): drop its text.
+            if extract.is_apple_news(art["url"]):
+                text = ""
             text = "\n".join(p for p in (title, art["description"], text,
                                          f"No article text could be fetched from {art['url']}") if p)
         if note:

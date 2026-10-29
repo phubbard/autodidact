@@ -35,7 +35,9 @@ LANDING_SCRIPT = """<html><head><title>Apple News</title></head>
 LANDING_EXCLUSIVE = """<html><head><title>Apple News</title>
 <meta property="og:title" content="Inside the Watch Workshop — Hodinkee">
 <meta property="og:description" content="A visit to a Geneva atelier.">
-</head><body><a href="https://apps.apple.com/app/apple-news/id1066498020">Open in Apple News</a></body></html>"""
+</head><body><p>Opening story…</p><a href="#">Click here</a> <a href="#">Tap here</a> if the story doesn't open
+after a few seconds. <a href="https://apps.apple.com/app/apple-news/id1066498020">Learn more about Apple News</a>
+</body></html>"""
 
 
 class Site(BaseHTTPRequestHandler):
@@ -185,13 +187,15 @@ def test_ingest_url_unwraps_apple_news_landing_pages(client, site, monkeypatch):
     assert client.get("/stats").json["pages"] == 1
 
 
-def test_ingest_url_news_plus_exclusive_keeps_title(client, site):
+def test_ingest_url_news_plus_exclusive_keeps_title(client, site, monkeypatch):
+    monkeypatch.setattr(extract, "APPLE_NEWS_HOSTS", extract.APPLE_NEWS_HOSTS + ("127.0.0.1",))
     r = client.post("/ingest-url", json={"url": site + "/landing-exclusive", "source": "news"}, headers=HEADERS)
     assert r.status_code == 200, r.data
     page = client.get(f"/page/{r.json['id']}").json
     assert page["title"] == "Inside the Watch Workshop — Hodinkee"
     assert page["description"].startswith("apple news · ")
     assert "No article text could be fetched" in page["text"]
+    assert "Opening story" not in page["text"] and "Tap here" not in page["text"]   # Apple's landing stub
     assert r.json["message"].endswith("(title and link only; no article text)")
     assert client.get("/search?q=watch workshop").json["results"]
     assert client.get("/search?q=apple news").json["results"]
