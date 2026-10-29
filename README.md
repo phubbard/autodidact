@@ -249,8 +249,12 @@ apple.news link so it is still findable. The same dedup applies, so a story
 shared from News that you also read in the browser is one page, two visits.
 
 `docs/SHORTCUT.md` is the three-minute recipe for the **Send to Autodidact**
-Shortcut that puts this in the share sheet on iPhone, iPad and Mac. Two
-caveats: the server fetches without cookies, so paywalled publishers yield
+Shortcut that puts this in the share sheet on iPhone, iPad and Mac; generate
+it with `docs/make_shortcut.py` rather than building it by hand. It accepts
+only URLs and Safari pages: offered text too, Apple News shares a story as
+text with no link and the shortcut has nothing to send. When a News+
+exclusive is stored title-only, Apple's "Opening story…" landing text is
+left out. Two caveats: the server fetches without cookies, so paywalled publishers yield
 their public teaser rather than what you read inside News+; and saving a
 story in News does not trigger anything, so it is save-then-share.
 
