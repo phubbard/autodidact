@@ -258,7 +258,7 @@ EOF
     fi
   fi
   if [ "$DRY_RUN" != 1 ]; then
-    # The site's access log must belong to the caddy user: \`caddy validate\` below runs as root and
+    # The site's access log must belong to the caddy user: `caddy validate` below runs as root and
     # would otherwise create it root-owned, and the reload (as caddy) then fails to open it (2026-10-28).
     CADDY_LOG=/var/log/caddy/autodidact.access.log
     if id caddy >/dev/null 2>&1; then
