@@ -22,7 +22,7 @@ SERVER = "https://autodidact.phfactor.net/ingest-url"
 
 def build(server: str = SERVER) -> dict:
     U = lambda: str(uuid.uuid4()).upper()  # noqa: E731
-    u_urls, u_first, u_dev, u_post, u_msg = U(), U(), U(), U(), U()
+    u_urls, u_type, u_dev, u_post, u_msg = U(), U(), U(), U(), U()
 
     def text(s):
         return {"Value": {"string": s, "attachmentsByRange": {}}, "WFSerializationType": "WFTextTokenString"}
@@ -44,14 +44,18 @@ def build(server: str = SERVER) -> dict:
 
     actions = [
         ("is.workflow.actions.detect.link", {"UUID": u_urls, "WFInput": var({"Type": "ExtensionInput"})}),
-        ("is.workflow.actions.getitemfromlist",
-         {"UUID": u_first, "WFItemSpecifier": "First Item", "WFInput": attach(out(u_urls, "URLs"))}),
+        # What the app shared, for the server's error message when no link turns up.
+        ("is.workflow.actions.getitemtype", {"UUID": u_type, "WFInput": attach({"Type": "ExtensionInput"})}),
         ("is.workflow.actions.getdevicedetails", {"UUID": u_dev, "WFDeviceDetail": "Device Name"}),
         ("is.workflow.actions.downloadurl", {
             "UUID": u_post, "WFURL": server, "WFHTTPMethod": "POST", "ShowHeaders": True,
             "WFHTTPHeaders": fields([("Authorization", text("Bearer PASTE-TOKEN-HERE"))]),
             "WFHTTPBodyType": "JSON",
-            "WFJSONValues": fields([("url", var(out(u_first, "Item from List"))),
+            # No "Get Item from List": with nothing found it stops the Shortcut silently (Apple News,
+            # 2026-10-28). The server takes the first link from url, or else from the shared text.
+            "WFJSONValues": fields([("url", var(out(u_urls, "URLs"))),
+                                    ("shared", var({"Type": "ExtensionInput"})),
+                                    ("input_type", var(out(u_type, "Type"))),
                                     ("client", var(out(u_dev, "Device Details")))]),
         }),
         # The server always answers with a ready-to-show "message" ("Saved: …", "Not saved: …").
@@ -69,7 +73,7 @@ def build(server: str = SERVER) -> dict:
         "WFWorkflowImportQuestions": [], "WFQuickActionSurfaces": [],
         "WFWorkflowTypes": ["ActionExtension"],  # appears in the share sheet
         "WFWorkflowInputContentItemClasses": ["WFURLContentItem", "WFSafariWebPageContentItem",
-                                              "WFArticleContentItem", "WFRichTextContentItem"],
+                                              "WFArticleContentItem", "WFRichTextContentItem", "WFStringContentItem"],
         "WFWorkflowOutputContentItemClasses": [], "WFWorkflowHasShortcutInputVariables": True,
         "WFWorkflowHasOutputFallback": False,
         "WFWorkflowNoInputBehavior": {"Name": "WFWorkflowNoInputBehaviorGetClipboard", "Parameters": {}},

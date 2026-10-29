@@ -312,12 +312,18 @@ def create_app(db_path=None, token=None, policy_path=None):
         body = request.get_json(silent=True) or {}
         raw = body.get("url")
         if isinstance(raw, list):  # a Shortcuts list variable arrives as a JSON array
-            raw = next((x for x in raw if isinstance(x, str) and x.strip()), "")
-        url = raw.strip() if isinstance(raw, str) else ""
-        if not url.startswith(("http://", "https://")):
-            # Say what arrived: a Shortcut wired to the wrong variable is otherwise hard to diagnose.
-            got = "nothing" if raw in (None, "", []) else repr(raw)[:120]
-            abort(400, f"url must be http(s); got {got} (keys: {', '.join(sorted(body)) or 'none'})")
+            raw = "\n".join(x for x in raw if isinstance(x, str))
+        # The Shortcut sends whatever "Get URLs" found (possibly several, newline-separated, or none)
+        # plus the raw shared content as text: some apps (Apple News) hand over something "Get URLs"
+        # finds nothing in, and the first link in the text is the next best thing.
+        shared = body.get("shared") if isinstance(body.get("shared"), str) else ""
+        found = _URL_RE.search(raw if isinstance(raw, str) else "") or _URL_RE.search(shared)
+        url = found.group(0).rstrip(".,;)]>\"'") if found else ""
+        if not url:
+            # Say what arrived, so the notification on the phone explains the failure.
+            kind = (body.get("input_type") or "").strip()[:40]
+            got = repr((shared or raw or "")[:80]) if (shared or raw) else "nothing"
+            abort(400, f"no link in what was shared{f' ({kind})' if kind else ''}; got {got}")
         source = (body.get("source") or "").strip().lower()
         if not source:
             source = "news" if extract.is_apple_news(url) else "shared"
@@ -804,6 +810,7 @@ def _hit(r):
 
 
 _LONE_SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
+_URL_RE = re.compile(r"https?://[^\s<>\"']+")
 
 
 def _clean_text(s: str) -> str:

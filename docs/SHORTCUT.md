@@ -22,7 +22,7 @@ Content-Type: application/json
 {"url": "https://apple.news/A…", "client": "iPhone"}
 ```
 
-Optional fields: `title` (overrides the page's), `note` (prepended to the stored text, so a word you add is searchable later), `source` (`news` or `shared`; defaults to `news` for `apple.news` links and `shared` otherwise).
+Optional fields: `shared` (the raw shared content as text; the server takes the first link from it when `url` has none, which is how Apple News shares arrive), `input_type` (for error messages), `title` (overrides the page's), `note` (prepended to the stored text, so a word you add is searchable later), `source` (`news` or `shared`; defaults to `news` for `apple.news` links and `shared` otherwise).
 
 Reply: `{"ok", "message", "id", "created", "new_visit", "url", "title", "source", "via", "chars"}`. `message` is ready to show ("Saved: <title>", "Already saved: <title>", or with "(title and link only; no article text)" for a News+ exclusive). Every failure is JSON too, `{"ok": false, "error", "message": "Not saved: <reason>"}`, including a wrong token and unexpected server errors, so the Shortcut only ever displays `message`. `url` is where the story was actually fetched from (the publisher, after unwrapping an Apple News link), `via` is the apple.news link when one was unwrapped, `chars` is how much text was stored. Errors: `400` bad URL or source, `502` the page could not be fetched or was not HTML (a PDF, say), `401` wrong token.
 

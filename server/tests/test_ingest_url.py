@@ -208,9 +208,19 @@ def test_ingest_url_errors(client, site):
 
 def test_ingest_url_reports_what_it_got(client):
     r = client.post("/ingest-url", json={"url": "", "client": "iPhone"}, headers=HEADERS)
-    assert r.status_code == 400 and "got nothing (keys: client, url)" in r.json["message"]
-    r = client.post("/ingest-url", json={"url": "not a url"}, headers=HEADERS)
-    assert r.status_code == 400 and "got 'not a url'" in r.json["error"]
+    assert r.status_code == 400 and r.json["message"] == "Not saved: no link in what was shared; got nothing"
+    r = client.post("/ingest-url", json={"url": "", "shared": "Some headline only", "input_type": "Article"}, headers=HEADERS)
+    assert r.status_code == 400 and r.json["error"] == "no link in what was shared (Article); got 'Some headline only'"
+
+
+def test_ingest_url_finds_the_link_in_shared_text(client, site):
+    # Apple News: "Get URLs" can come back empty, but the shared text carries the link.
+    shared = f"Read this: WAL tuning on a Pi {site}/wal. Shared from Apple News"
+    r = client.post("/ingest-url", json={"url": "", "shared": shared, "input_type": "Text"}, headers=HEADERS)
+    assert r.status_code == 200 and r.json["title"] == "WAL tuning on a Raspberry Pi"
+    # Several URLs, newline-separated (a Shortcuts list as text): the first is used.
+    r = client.post("/ingest-url", json={"url": f"{site}/wal\n{site}/other"}, headers=HEADERS)
+    assert r.status_code == 200 and r.json["url"] == f"{site}/wal"
 
 
 def test_ingest_url_unexpected_error_is_json(client, site, monkeypatch):
