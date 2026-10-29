@@ -230,11 +230,22 @@ if [ -f "$CADDYFILE" ] && command -v caddy >/dev/null; then
   write_file "$CADDY_CONF_DIR/autodidact.caddy" 644 root <<EOF || true
 # Managed by autodidact/deploy/install.sh — edits will be overwritten on the next run.
 $SITE_HOST {
+	# Access log, so requests turned away below are visible (e.g. a phone off the home network).
+	log {
+		output file /var/log/caddy/autodidact.access.log {
+			roll_size 10MiB
+			roll_keep 3
+		}
+	}
 	@lan remote_ip 127.0.0.1 ::1$LAN_MATCH
 	handle @lan {
 		reverse_proxy 127.0.0.1:$PORT
 	}
-	respond 403
+	# Everyone else: a JSON refusal with a message, so the share-sheet Shortcut's notification says why.
+	handle {
+		header Content-Type application/json
+		respond \`{"ok": false, "message": "Not saved: Autodidact is reachable only from the home network or Tailscale"}\` 403
+	}
 }
 EOF
   if ! grep -qF "import $CADDY_CONF_DIR/" "$CADDYFILE" && ! grep -qE "^\s*import\s+conf\.d/" "$CADDYFILE"; then
